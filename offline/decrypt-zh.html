@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PingVaults 离线解密器</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #222222;
+    --text: #e5e5e5;
+    --muted: #666666;
+    --primary: #22c55e;
+    --warning: #f59e0b;
+    --error: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+  .container { max-width: 680px; margin: 0 auto; }
+  header { text-align: center; padding: 40px 0 32px; }
+  header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+  header p { color: var(--muted); font-size: 0.875rem; margin-top: 8px; line-height: 1.6; }
+  .badge {
+    display: inline-block;
+    background: #1a2e1a; color: var(--primary);
+    border: 1px solid #2d4a2d;
+    border-radius: 6px; padding: 3px 10px;
+    font-size: 0.7rem; font-family: monospace; margin-top: 10px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 0.8rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px;
+  }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 5px; }
+  input, textarea, select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 0.875rem;
+    padding: 10px 12px; outline: none; font-family: monospace; transition: border-color 0.15s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #333; }
+  textarea { resize: vertical; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn {
+    display: block; width: 100%;
+    background: var(--primary); color: #000; border: none;
+    border-radius: 8px; padding: 12px; font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-secondary {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { color: var(--text); background: var(--border); opacity: 1; }
+  .error-box {
+    background: #1a0a0a; border: 1px solid #4a1a1a;
+    border-radius: 8px; padding: 12px 14px;
+    color: var(--error); font-size: 0.8rem; font-family: monospace; margin-top: 12px;
+  }
+  .success-box {
+    background: #0a1a0f; border: 1px solid #1a4a2a;
+    border-radius: 12px; overflow: hidden; margin-top: 12px;
+  }
+  .success-header {
+    background: #0f2a18; padding: 10px 16px; font-size: 0.8rem;
+    color: var(--primary); font-family: monospace;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #1a4a2a;
+  }
+  .entry-card { border-bottom: 1px solid #1a3a22; }
+  .entry-card:last-child { border-bottom: none; }
+  .entry-header {
+    padding: 10px 16px 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .entry-num {
+    width: 22px; height: 22px; background: #1a4a2a; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: var(--primary); font-weight: bold; flex-shrink: 0;
+  }
+  .entry-category { font-size: 0.875rem; font-weight: 600; }
+  .copy-btn {
+    background: transparent; border: 1px solid #2a4a3a; border-radius: 6px;
+    color: var(--muted); padding: 3px 10px; font-size: 0.7rem;
+    cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  }
+  .copy-btn:hover { color: var(--text); border-color: #3a6a5a; }
+  .entry-content {
+    padding: 0 16px 14px; font-family: monospace; font-size: 0.825rem;
+    line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-all;
+  }
+  .schema-hint {
+    background: #1a160a; border: 1px solid #3a2d10;
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .schema-hint p { font-size: 0.8rem; color: var(--warning); font-weight: 600; margin-bottom: 8px; }
+  .schema-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip {
+    background: #2a2010; border: 1px solid #3a3010;
+    border-radius: 6px; padding: 3px 8px;
+    font-size: 0.75rem; color: #fcd34d; font-family: monospace;
+  }
+  .arrow { color: var(--muted); font-size: 0.7rem; }
+  .tabs {
+    display: flex; margin-bottom: 16px;
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .tab {
+    flex: 1; background: transparent; border: none; padding: 9px;
+    font-size: 0.8rem; color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .tab.active { background: var(--surface); color: var(--text); font-weight: 500; }
+  .tab:hover:not(.active) { color: var(--text); }
+  #ciphertext-input { display: none; }
+  .loading-spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #000; border-top-color: transparent;
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+    margin-right: 6px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .key-entry {
+    background: #0e0e14; border: 1px solid #1e1e2e;
+    border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .key-entry:last-child { margin-bottom: 0; }
+  .key-num { font-size: 0.7rem; color: var(--warning); font-family: monospace; margin-bottom: 6px; }
+  .privacy-note {
+    text-align: center; font-size: 0.75rem; color: var(--muted);
+    margin-top: 24px; line-height: 1.6; padding: 0 16px;
+  }
+  .privacy-note span { color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="font-size:2rem;margin-bottom:8px;">🧊</div>
+    <h1>PingVaults 离线解密器</h1>
+    <p>完全在浏览器本地运行 · 无任何网络请求 · 答案不离开此页面</p>
+    <span class="badge">Zero-Knowledge · AES-256-GCM · PBKDF2</span>
+  </header>
+
+  <!-- 第一步 -->
+  <div class="card">
+    <div class="card-title">第一步：密文来源</div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('txid',event)">输入 Arweave TxID</button>
+      <button class="tab" onclick="switchTab('paste',event)">直接粘贴密文</button>
+    </div>
+    <div id="txid-input">
+      <div class="field">
+        <label>Arweave TxID（在链上永久存储的地址）</label>
+        <input id="txid" type="text" placeholder="例如：Dld7RnIBOSKXKF8q9eMbFHm3P3cB..." />
+      </div>
+      <button class="btn btn-secondary" onclick="fetchCiphertext()" id="fetch-btn">
+        从 Arweave 下载密文
+      </button>
+      <div id="fetch-status"></div>
+    </div>
+    <div id="ciphertext-input">
+      <div class="field">
+        <label>密文（Base64 编码的 AES-GCM 加密内容）</label>
+        <textarea id="ciphertext-raw" rows="4" placeholder="粘贴密文..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 第二步 -->
+  <div class="card">
+    <div class="card-title">第二步：加密参数（Salt &amp; IV）</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:14px;">
+      这两个参数从金库元数据获取（邮件附件 / 导出的备份 JSON 文件）。
+    </p>
+    <div class="row">
+      <div class="field">
+        <label>Salt（Base64）</label>
+        <input id="salt" type="text" placeholder="加密盐值..." />
+      </div>
+      <div class="field">
+        <label>IV（Base64）</label>
+        <input id="iv" type="text" placeholder="初始向量..." />
+      </div>
+    </div>
+    <div class="field" style="margin-top:2px;">
+      <label>语言规则</label>
+      <select id="language">
+        <option value="zh" selected>中文（全角转半角、移除空格）</option>
+        <option value="en">English（lowercase、remove spaces）</option>
+        <option value="ja">日本語（全角変換）</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 第三步 -->
+  <div class="card">
+    <div class="card-title">第三步：密语答案</div>
+    <div id="schema-hint-area"></div>
+    <div id="key-entries"></div>
+    <button class="btn btn-secondary" onclick="addKeyEntry()" style="margin-top:10px;">
+      + 添加密语维度
+    </button>
+  </div>
+
+  <button class="btn" onclick="doDecrypt()" id="decrypt-btn">本地解密</button>
+  <div id="error-area"></div>
+  <div id="result-area"></div>
+
+  <!-- 导入元数据 -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-title">快捷导入：粘贴 JSON 元数据</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:10px;">
+      从原网站导出的 <code style="color:#aaa">pv_last_vault</code> JSON，可自动填充 Salt / IV / 密语结构。
+    </p>
+    <div class="field">
+      <textarea id="meta-import" rows="3" placeholder='{"txId":"...","salt":"...","iv":"...","keySchema":[...],"keyLanguage":"zh"}'></textarea>
+    </div>
+    <button class="btn btn-secondary" onclick="importMeta()">导入元数据</button>
+    <div id="import-status"></div>
+  </div>
+
+  <p class="privacy-note">
+    此工具完全在浏览器本地运行，使用 Web Crypto API（<span>AES-256-GCM + PBKDF2</span>）。<br>
+    所有运算均在你的设备上完成，答案和明文永远不会离开此页面。<br>
+    你可以断网后打开此文件，完全离线使用。
+  </p>
+</div>
+
+<script>
+const KEY_TYPE_LABELS = {
+  name: "姓名",
+  id_last_4: "证件号后 4 位",
+  phone_last_4: "手机号后 4 位",
+  custom_question: "自定义问题",
+};
+const KEY_TYPE_OPTIONS = {
+  name: "姓名（必选）",
+  id_last_4: "证件号后 4 位",
+  phone_last_4: "手机号后 4 位",
+  custom_question: "自定义问题（必选）",
+};
+const REQUIRED_TYPES = new Set(["name", "custom_question"]);
+let keyEntryCount = 0;
+
+window.addEventListener("DOMContentLoaded", () => {
+  const order = Math.random() > 0.5
+    ? [["name",""],["custom_question",""]]
+    : [["custom_question",""],["name",""]];
+  order.forEach(([type]) => addKeyEntry(type, "", ""));
+});
+
+function addKeyEntry(typeVal, question, answer) {
+  keyEntryCount++;
+  const id = keyEntryCount;
+  const container = document.getElementById("key-entries");
+  const div = document.createElement("div");
+  div.className = "key-entry";
+  div.id = `key-entry-${id}`;
+  const t = typeVal || "custom_question";
+  const isCustom = t === "custom_question";
+  div.innerHTML = `
+    <div class="key-num" id="key-num-${id}">维度 ${id}</div>
+    <div class="field" style="margin-bottom:8px;">
+      <label>类型</label>
+      <select id="key-type-${id}" onchange="onTypeChange(${id})">
+        <option value="name" ${t==='name'?'selected':''}>${KEY_TYPE_OPTIONS.name}</option>
+        <option value="id_last_4" ${t==='id_last_4'?'selected':''}>${KEY_TYPE_OPTIONS.id_last_4}</option>
+        <option value="phone_last_4" ${t==='phone_last_4'?'selected':''}>${KEY_TYPE_OPTIONS.phone_last_4}</option>
+        <option value="custom_question" ${isCustom?'selected':''}>${KEY_TYPE_OPTIONS.custom_question}</option>
+      </select>
+    </div>
+    <div class="field" id="question-field-${id}" style="margin-bottom:8px;display:${isCustom?'block':'none'}">
+      <label>问题题面（提示用）</label>
+      <input id="key-question-${id}" type="text" value="${esc(question||'')}" placeholder="例如：我出生时所在的医院叫什么名字？" />
+    </div>
+    <div class="field">
+      <label style="color:#f59e0b;">答案（仅本地使用，不会发送）</label>
+      <input id="key-answer-${id}" type="password" value="${esc(answer||'')}" placeholder="输入答案..." autocomplete="off" />
+    </div>
+    <button onclick="removeKeyEntry(${id})" id="remove-btn-${id}"
+      style="background:none;border:none;color:#666;font-size:0.75rem;cursor:pointer;margin-top:4px;
+             display:${REQUIRED_TYPES.has(t)?'none':'inline'};">
+      移除此维度
+    </button>`;
+  container.appendChild(div);
+}
+
+function removeKeyEntry(id) {
+  const type = document.getElementById(`key-type-${id}`)?.value;
+  if (REQUIRED_TYPES.has(type)) return;
+  document.getElementById(`key-entry-${id}`)?.remove();
+  renumber();
+}
+function renumber() {
+  document.querySelectorAll(".key-entry").forEach((el,i) => {
+    const n = el.querySelector("[id^='key-num-']");
+    if (n) n.textContent = `维度 ${i+1}`;
+  });
+}
+function onTypeChange(id) {
+  const type = document.getElementById(`key-type-${id}`).value;
+  document.getElementById(`question-field-${id}`).style.display = type==='custom_question'?'block':'none';
+  const btn = document.getElementById(`remove-btn-${id}`);
+  if (btn) btn.style.display = REQUIRED_TYPES.has(type)?'none':'inline';
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function switchTab(tab,e) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('txid-input').style.display = tab==='txid'?'block':'none';
+  document.getElementById('ciphertext-input').style.display = tab==='paste'?'block':'none';
+}
+
+async function fetchCiphertext() {
+  const txid = document.getElementById('txid').value.trim();
+  if (!txid) return;
+  const btn = document.getElementById('fetch-btn');
+  const status = document.getElementById('fetch-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> 下载中...';
+  status.innerHTML = '';
+  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`]) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      document.getElementById('ciphertext-raw').value = await res.text();
+      document.getElementById('txid-input').style.display = 'none';
+      document.getElementById('ciphertext-input').style.display = 'block';
+      document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===1));
+      btn.disabled = false; btn.textContent = '从 Arweave 下载密文'; return;
+    } catch {}
+  }
+  status.innerHTML = '<div class="error-box">下载失败，请检查 TxID 或网络连接，也可手动粘贴密文。</div>';
+  btn.disabled = false; btn.textContent = '从 Arweave 下载密文';
+}
+
+function importMeta() {
+  const status = document.getElementById('import-status');
+  try {
+    const meta = JSON.parse(document.getElementById('meta-import').value.trim());
+    if (meta.salt) document.getElementById('salt').value = meta.salt;
+    if (meta.iv) document.getElementById('iv').value = meta.iv;
+    if (meta.keyLanguage) document.getElementById('language').value = meta.keyLanguage;
+    if (meta.txId) document.getElementById('txid').value = meta.txId;
+    if (Array.isArray(meta.keySchema) && meta.keySchema.length > 0) {
+      document.getElementById('key-entries').innerHTML = ''; keyEntryCount = 0;
+      meta.keySchema.forEach(item => addKeyEntry(item.type, item.question||'', ''));
+      renderSchemaHint(meta.keySchema, meta.keyLanguage);
+    }
+    // 如果 JSON 里包含密文，自动填入并切换到粘贴模式（无需联网）
+    if (meta.ciphertext) {
+      document.getElementById('ciphertext-raw').value = meta.ciphertext;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab')[1].classList.add('active');
+      document.getElementById('txid-input').style.display = 'none';
+      document.getElementById('ciphertext-input').style.display = 'block';
+      status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">✓ 已导入密文，填写答案后直接解密（无需联网）</p>';
+    } else {
+      status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">✓ 导入成功，请填写密语答案后解密</p>';
+    }
+  } catch {
+    status.innerHTML = '<div class="error-box">JSON 格式错误，请检查元数据</div>';
+  }
+}
+
+function renderSchemaHint(schema, lang) {
+  const area = document.getElementById('schema-hint-area');
+  if (!schema?.length) { area.innerHTML=''; return; }
+  const langLabel = {zh:'中文',en:'English',ja:'日本語'}[lang]||lang;
+  let chips = '';
+  schema.forEach((item,i) => {
+    if (i>0) chips += '<span class="arrow">→</span>';
+    chips += `<span class="chip">${i+1}. ${esc(KEY_TYPE_LABELS[item.type]||item.type)}</span>`;
+  });
+  area.innerHTML = `
+    <div class="schema-hint">
+      <p>密语排列方式（请严格按此顺序输入）</p>
+      <div class="schema-chips">${chips}</div>
+      <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;font-weight:normal;">语言规则：${langLabel}</p>
+    </div>`;
+}
+
+function normalizeInput(str, language) {
+  if (!str) return '';
+  let s = str.trim().toLowerCase();
+  if (language==='zh'||language==='ja')
+    s = s.replace(/[\uff01-\uff5e]/g, ch => String.fromCharCode(ch.charCodeAt(0)-0xfee0));
+  return s.replace(/[\s\-\/\.,_]/g,'');
+}
+function b64ToBuf(b64) { return Uint8Array.from(atob(b64),c=>c.charCodeAt(0)); }
+
+async function doDecrypt() {
+  const errArea = document.getElementById('error-area');
+  const resArea = document.getElementById('result-area');
+  const btn = document.getElementById('decrypt-btn');
+  errArea.innerHTML = ''; resArea.innerHTML = '';
+
+  const ciphertext = document.getElementById('ciphertext-raw').value.trim();
+  if (!ciphertext) { errArea.innerHTML='<div class="error-box">请先获取或粘贴密文</div>'; return; }
+  const saltB64 = document.getElementById('salt').value.trim();
+  const ivB64 = document.getElementById('iv').value.trim();
+  if (!saltB64||!ivB64) { errArea.innerHTML='<div class="error-box">请填写 Salt 和 IV</div>'; return; }
+
+  const language = document.getElementById('language').value;
+  const entries = document.querySelectorAll('.key-entry');
+  const answers = [];
+  entries.forEach(entry => {
+    const id = entry.id.replace('key-entry-','');
+    const el = document.getElementById(`key-answer-${id}`);
+    if (el) answers.push(el.value);
+  });
+  if (!answers.length) { errArea.innerHTML='<div class="error-box">请至少添加一个密语维度并输入答案</div>'; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> 解密中...';
+
+  try {
+    const salt = b64ToBuf(saltB64), iv = b64ToBuf(ivB64), cipher = b64ToBuf(ciphertext);
+    const rawKey = answers.map(a=>normalizeInput(a,language)).join('|');
+    const km = await crypto.subtle.importKey('raw',new TextEncoder().encode(rawKey),'PBKDF2',false,['deriveKey']);
+    const aesKey = await crypto.subtle.deriveKey(
+      {name:'PBKDF2',salt:salt.buffer,iterations:600000,hash:'SHA-256'},
+      km, {name:'AES-GCM',length:256}, false, ['decrypt']
+    );
+    const plain = new TextDecoder().decode(
+      await crypto.subtle.decrypt({name:'AES-GCM',iv:iv.buffer},aesKey,cipher.buffer)
+    );
+    renderResult(plain);
+  } catch {
+    errArea.innerHTML = '<div class="error-box">解密失败：答案顺序或内容有误，请检查密语排列方式和输入顺序。</div>';
+  } finally {
+    btn.disabled = false; btn.textContent = '本地解密';
+  }
+}
+
+function renderResult(raw) {
+  const area = document.getElementById('result-area');
+  let structured = null;
+  try { const p=JSON.parse(raw); if(p?.v===1&&Array.isArray(p.entries)) structured=p; } catch {}
+  if (!structured) {
+    area.innerHTML = `<div class="success-box" style="margin-top:16px;">
+      <div class="success-header">✓ 解密成功</div>
+      <pre style="padding:16px;font-size:0.825rem;line-height:1.7;white-space:pre-wrap;word-break:break-all;">${esc(raw)}</pre>
+    </div>`;
+    return;
+  }
+  let html = '';
+  structured.entries.forEach((e,i) => {
+    html += `<div class="entry-card">
+      <div class="entry-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="entry-num">${i+1}</span>
+          <span class="entry-category">${esc(e.category)}</span>
+        </div>
+        <button class="copy-btn" onclick="copyEntry(this,${i})">复制</button>
+      </div>
+      <pre class="entry-content" id="ec-${i}">${esc(e.content)}</pre>
+    </div>`;
+  });
+  area.innerHTML = `<div class="success-box" style="margin-top:16px;">
+    <div class="success-header">
+      <span>✓ 解密成功</span>
+      <span style="color:#4a8a6a;font-size:0.75rem;">${structured.entries.length} 条资产线索</span>
+    </div>${html}</div>
+    <p style="text-align:center;font-size:0.75rem;color:var(--muted);margin-top:12px;">
+      以上内容完全在本地解密，未经过任何服务器
+    </p>`;
+}
+function copyEntry(btn,i) {
+  navigator.clipboard.writeText(document.getElementById(`ec-${i}`).textContent).then(()=>{
+    btn.textContent='已复制 ✓'; setTimeout(()=>btn.textContent='复制',2000);
+  });
+}
+</script>
+</body>
+</html>

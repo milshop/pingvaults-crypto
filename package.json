@@ -1,0 +1,28 @@
+{
+  "name": "pingvaults-crypto",
+  "version": "1.0.0",
+  "description": "PingVaults encryption core — open source for independent security auditing",
+  "type": "module",
+  "main": "./src/crypto.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  },
+  "keywords": [
+    "encryption",
+    "AES-256-GCM",
+    "PBKDF2",
+    "WebCrypto",
+    "zero-knowledge",
+    "digital-estate"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/milshop/pingvaults-crypto"
+  }
+}

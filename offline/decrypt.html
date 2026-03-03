@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PingVaults Offline Decryptor</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #222222;
+    --text: #e5e5e5;
+    --muted: #666666;
+    --primary: #22c55e;
+    --warning: #f59e0b;
+    --error: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+  .container { max-width: 680px; margin: 0 auto; }
+  header { text-align: center; padding: 40px 0 32px; }
+  header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+  header p { color: var(--muted); font-size: 0.875rem; margin-top: 8px; line-height: 1.6; }
+  .badge {
+    display: inline-block;
+    background: #1a2e1a; color: var(--primary);
+    border: 1px solid #2d4a2d;
+    border-radius: 6px; padding: 3px 10px;
+    font-size: 0.7rem; font-family: monospace; margin-top: 10px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 0.8rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px;
+  }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 5px; }
+  input, textarea, select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 0.875rem;
+    padding: 10px 12px; outline: none; font-family: monospace; transition: border-color 0.15s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #333; }
+  textarea { resize: vertical; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn {
+    display: block; width: 100%;
+    background: var(--primary); color: #000; border: none;
+    border-radius: 8px; padding: 12px; font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-secondary {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { color: var(--text); background: var(--border); opacity: 1; }
+  .error-box {
+    background: #1a0a0a; border: 1px solid #4a1a1a;
+    border-radius: 8px; padding: 12px 14px;
+    color: var(--error); font-size: 0.8rem; font-family: monospace; margin-top: 12px;
+  }
+  .success-box {
+    background: #0a1a0f; border: 1px solid #1a4a2a;
+    border-radius: 12px; overflow: hidden; margin-top: 12px;
+  }
+  .success-header {
+    background: #0f2a18; padding: 10px 16px; font-size: 0.8rem;
+    color: var(--primary); font-family: monospace;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #1a4a2a;
+  }
+  .entry-card { border-bottom: 1px solid #1a3a22; }
+  .entry-card:last-child { border-bottom: none; }
+  .entry-header {
+    padding: 10px 16px 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .entry-num {
+    width: 22px; height: 22px; background: #1a4a2a; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: var(--primary); font-weight: bold; flex-shrink: 0;
+  }
+  .entry-category { font-size: 0.875rem; font-weight: 600; }
+  .copy-btn {
+    background: transparent; border: 1px solid #2a4a3a; border-radius: 6px;
+    color: var(--muted); padding: 3px 10px; font-size: 0.7rem;
+    cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  }
+  .copy-btn:hover { color: var(--text); border-color: #3a6a5a; }
+  .entry-content {
+    padding: 0 16px 14px; font-family: monospace; font-size: 0.825rem;
+    line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-all;
+  }
+  .schema-hint {
+    background: #1a160a; border: 1px solid #3a2d10;
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .schema-hint p { font-size: 0.8rem; color: var(--warning); font-weight: 600; margin-bottom: 8px; }
+  .schema-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip {
+    background: #2a2010; border: 1px solid #3a3010;
+    border-radius: 6px; padding: 3px 8px;
+    font-size: 0.75rem; color: #fcd34d; font-family: monospace;
+  }
+  .arrow { color: var(--muted); font-size: 0.7rem; }
+  .tabs {
+    display: flex; margin-bottom: 16px;
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .tab {
+    flex: 1; background: transparent; border: none; padding: 9px;
+    font-size: 0.8rem; color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .tab.active { background: var(--surface); color: var(--text); font-weight: 500; }
+  .tab:hover:not(.active) { color: var(--text); }
+  #ciphertext-input { display: none; }
+  .loading-spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #000; border-top-color: transparent;
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+    margin-right: 6px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .key-entry {
+    background: #0e0e14; border: 1px solid #1e1e2e;
+    border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .key-entry:last-child { margin-bottom: 0; }
+  .key-num { font-size: 0.7rem; color: var(--warning); font-family: monospace; margin-bottom: 6px; }
+  .privacy-note {
+    text-align: center; font-size: 0.75rem; color: var(--muted);
+    margin-top: 24px; line-height: 1.6; padding: 0 16px;
+  }
+  .privacy-note span { color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="font-size:2rem;margin-bottom:8px;">🧊</div>
+    <h1>PingVaults Offline Decryptor</h1>
+    <p>Runs entirely in your browser · No network requests · Answers never leave this page</p>
+    <span class="badge">Zero-Knowledge · AES-256-GCM · PBKDF2</span>
+  </header>
+
+  <!-- Step 1 -->
+  <div class="card">
+    <div class="card-title">Step 1 — Ciphertext Source</div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('txid',event)">Enter Arweave TxID</button>
+      <button class="tab" onclick="switchTab('paste',event)">Paste Ciphertext</button>
+    </div>
+    <div id="txid-input">
+      <div class="field">
+        <label>Arweave TxID (permanent on-chain address)</label>
+        <input id="txid" type="text" placeholder="e.g. Dld7RnIBOSKXKF8q9eMbFHm3P3cB..." />
+      </div>
+      <button class="btn btn-secondary" onclick="fetchCiphertext()" id="fetch-btn">
+        Download ciphertext from Arweave
+      </button>
+      <div id="fetch-status"></div>
+    </div>
+    <div id="ciphertext-input">
+      <div class="field">
+        <label>Ciphertext (Base64-encoded AES-GCM)</label>
+        <textarea id="ciphertext-raw" rows="4" placeholder="Paste ciphertext here..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card">
+    <div class="card-title">Step 2 — Encryption Parameters (Salt &amp; IV)</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:14px;">
+      Obtain these from the vault metadata JSON (email attachment / exported backup file).
+    </p>
+    <div class="row">
+      <div class="field">
+        <label>Salt (Base64)</label>
+        <input id="salt" type="text" placeholder="Encryption salt..." />
+      </div>
+      <div class="field">
+        <label>IV (Base64)</label>
+        <input id="iv" type="text" placeholder="Init vector..." />
+      </div>
+    </div>
+    <div class="field" style="margin-top:2px;">
+      <label>Normalization Language</label>
+      <select id="language">
+        <option value="zh">中文 (full-width → half-width, remove spaces)</option>
+        <option value="en" selected>English (lowercase, remove spaces)</option>
+        <option value="ja">日本語 (full-width conversion)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card">
+    <div class="card-title">Step 3 — Passphrase Answers</div>
+    <div id="schema-hint-area"></div>
+    <div id="key-entries"></div>
+    <button class="btn btn-secondary" onclick="addKeyEntry()" style="margin-top:10px;">
+      + Add dimension
+    </button>
+  </div>
+
+  <button class="btn" onclick="doDecrypt()" id="decrypt-btn">Decrypt Locally</button>
+  <div id="error-area"></div>
+  <div id="result-area"></div>
+
+  <!-- Import metadata -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-title">Quick Import — Paste Vault Metadata JSON</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:10px;">
+      Paste the exported <code style="color:#aaa">pv_last_vault</code> JSON to auto-fill Salt / IV / key schema.
+    </p>
+    <div class="field">
+      <textarea id="meta-import" rows="3" placeholder='{"txId":"...","salt":"...","iv":"...","keySchema":[...],"keyLanguage":"en"}'></textarea>
+    </div>
+    <button class="btn btn-secondary" onclick="importMeta()">Import Metadata</button>
+    <div id="import-status"></div>
+  </div>
+
+  <p class="privacy-note">
+    This tool runs entirely in your browser using the Web Crypto API (<span>AES-256-GCM + PBKDF2</span>).<br>
+    All operations happen on your device — answers and plaintext never leave this page.<br>
+    Disconnect from the internet and open this file for fully offline use.
+  </p>
+</div>
+
+<script>
+const KEY_TYPE_LABELS = {
+  name: "Full Name",
+  id_last_4: "ID Last 4 Digits",
+  phone_last_4: "Phone Last 4 Digits",
+  custom_question: "Custom Question",
+};
+const KEY_TYPE_OPTIONS = {
+  name: "Full Name (required)",
+  id_last_4: "ID Last 4 Digits",
+  phone_last_4: "Phone Last 4 Digits",
+  custom_question: "Custom Question (required)",
+};
+const REQUIRED_TYPES = new Set(["name", "custom_question"]);
+let keyEntryCount = 0;
+
+window.addEventListener("DOMContentLoaded", () => {
+  const order = Math.random() > 0.5
+    ? [["name",""],["custom_question",""]]
+    : [["custom_question",""],["name",""]];
+  order.forEach(([type]) => addKeyEntry(type, "", ""));
+});
+
+function addKeyEntry(typeVal, question, answer) {
+  keyEntryCount++;
+  const id = keyEntryCount;
+  const container = document.getElementById("key-entries");
+  const div = document.createElement("div");
+  div.className = "key-entry";
+  div.id = `key-entry-${id}`;
+  const t = typeVal || "custom_question";
+  const isCustom = t === "custom_question";
+  div.innerHTML = `
+    <div class="key-num" id="key-num-${id}">Dimension ${id}</div>
+    <div class="field" style="margin-bottom:8px;">
+      <label>Type</label>
+      <select id="key-type-${id}" onchange="onTypeChange(${id})">
+        <option value="name" ${t==='name'?'selected':''}>${KEY_TYPE_OPTIONS.name}</option>
+        <option value="id_last_4" ${t==='id_last_4'?'selected':''}>${KEY_TYPE_OPTIONS.id_last_4}</option>
+        <option value="phone_last_4" ${t==='phone_last_4'?'selected':''}>${KEY_TYPE_OPTIONS.phone_last_4}</option>
+        <option value="custom_question" ${isCustom?'selected':''}>${KEY_TYPE_OPTIONS.custom_question}</option>
+      </select>
+    </div>
+    <div class="field" id="question-field-${id}" style="margin-bottom:8px;display:${isCustom?'block':'none'}">
+      <label>Question text (hint)</label>
+      <input id="key-question-${id}" type="text" value="${esc(question||'')}" placeholder="e.g. What hospital was I born in?" />
+    </div>
+    <div class="field">
+      <label style="color:#f59e0b;">Answer (local only — never sent)</label>
+      <input id="key-answer-${id}" type="password" value="${esc(answer||'')}" placeholder="Enter answer..." autocomplete="off" />
+    </div>
+    <button onclick="removeKeyEntry(${id})" id="remove-btn-${id}"
+      style="background:none;border:none;color:#666;font-size:0.75rem;cursor:pointer;margin-top:4px;
+             display:${REQUIRED_TYPES.has(t)?'none':'inline'};">
+      Remove dimension
+    </button>`;
+  container.appendChild(div);
+}
+
+function removeKeyEntry(id) {
+  const type = document.getElementById(`key-type-${id}`)?.value;
+  if (REQUIRED_TYPES.has(type)) return;
+  document.getElementById(`key-entry-${id}`)?.remove();
+  renumber();
+}
+function renumber() {
+  document.querySelectorAll(".key-entry").forEach((el,i) => {
+    const n = el.querySelector("[id^='key-num-']");
+    if (n) n.textContent = `Dimension ${i+1}`;
+  });
+}
+function onTypeChange(id) {
+  const type = document.getElementById(`key-type-${id}`).value;
+  document.getElementById(`question-field-${id}`).style.display = type==='custom_question'?'block':'none';
+  const btn = document.getElementById(`remove-btn-${id}`);
+  if (btn) btn.style.display = REQUIRED_TYPES.has(type)?'none':'inline';
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function switchTab(tab,e) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('txid-input').style.display = tab==='txid'?'block':'none';
+  document.getElementById('ciphertext-input').style.display = tab==='paste'?'block':'none';
+}
+
+async function fetchCiphertext() {
+  const txid = document.getElementById('txid').value.trim();
+  if (!txid) return;
+  const btn = document.getElementById('fetch-btn');
+  const status = document.getElementById('fetch-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Downloading...';
+  status.innerHTML = '';
+  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`]) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      document.getElementById('ciphertext-raw').value = await res.text();
+      document.getElementById('txid-input').style.display = 'none';
+      document.getElementById('ciphertext-input').style.display = 'block';
+      document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===1));
+      btn.disabled = false; btn.textContent = 'Download ciphertext from Arweave'; return;
+    } catch {}
+  }
+  status.innerHTML = '<div class="error-box">Download failed. Check TxID or network, or paste ciphertext manually.</div>';
+  btn.disabled = false; btn.textContent = 'Download ciphertext from Arweave';
+}
+
+function importMeta() {
+  const status = document.getElementById('import-status');
+  try {
+    const meta = JSON.parse(document.getElementById('meta-import').value.trim());
+    if (meta.salt) document.getElementById('salt').value = meta.salt;
+    if (meta.iv) document.getElementById('iv').value = meta.iv;
+    if (meta.keyLanguage) document.getElementById('language').value = meta.keyLanguage;
+    if (meta.txId) document.getElementById('txid').value = meta.txId;
+    if (Array.isArray(meta.keySchema) && meta.keySchema.length > 0) {
+      document.getElementById('key-entries').innerHTML = ''; keyEntryCount = 0;
+      meta.keySchema.forEach(item => addKeyEntry(item.type, item.question||'', ''));
+      renderSchemaHint(meta.keySchema, meta.keyLanguage);
+    }
+    // If ciphertext is embedded in JSON, auto-fill it and switch to paste tab
+    if (meta.ciphertext) {
+      document.getElementById('ciphertext-raw').value = meta.ciphertext;
+      // Switch to paste tab so the ciphertext is used directly (no gateway needed)
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab')[1].classList.add('active');
+      document.getElementById('txid-input').style.display = 'none';
+      document.getElementById('ciphertext-input').style.display = 'block';
+      status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">✓ Imported with ciphertext — fill in answers and click Decrypt (no internet needed)</p>';
+    } else {
+      status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">✓ Imported — fill in answers to decrypt</p>';
+    }
+  } catch {
+    status.innerHTML = '<div class="error-box">Invalid JSON format</div>';
+  }
+}
+
+function renderSchemaHint(schema, lang) {
+  const area = document.getElementById('schema-hint-area');
+  if (!schema?.length) { area.innerHTML=''; return; }
+  const langLabel = {zh:'中文',en:'English',ja:'日本語'}[lang]||lang;
+  let chips = '';
+  schema.forEach((item,i) => {
+    if (i>0) chips += '<span class="arrow">→</span>';
+    chips += `<span class="chip">${i+1}. ${esc(KEY_TYPE_LABELS[item.type]||item.type)}</span>`;
+  });
+  area.innerHTML = `
+    <div class="schema-hint">
+      <p>Passphrase arrangement (enter answers strictly in this order)</p>
+      <div class="schema-chips">${chips}</div>
+      <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;font-weight:normal;">Language: ${langLabel}</p>
+    </div>`;
+}
+
+function normalizeInput(str, language) {
+  if (!str) return '';
+  let s = str.trim().toLowerCase();
+  if (language==='zh'||language==='ja')
+    s = s.replace(/[\uff01-\uff5e]/g, ch => String.fromCharCode(ch.charCodeAt(0)-0xfee0));
+  return s.replace(/[\s\-\/\.,_]/g,'');
+}
+function b64ToBuf(b64) { return Uint8Array.from(atob(b64),c=>c.charCodeAt(0)); }
+
+async function doDecrypt() {
+  const errArea = document.getElementById('error-area');
+  const resArea = document.getElementById('result-area');
+  const btn = document.getElementById('decrypt-btn');
+  errArea.innerHTML = ''; resArea.innerHTML = '';
+
+  const ciphertext = document.getElementById('ciphertext-raw').value.trim();
+  if (!ciphertext) { errArea.innerHTML='<div class="error-box">Please fetch or paste ciphertext first</div>'; return; }
+  const saltB64 = document.getElementById('salt').value.trim();
+  const ivB64 = document.getElementById('iv').value.trim();
+  if (!saltB64||!ivB64) { errArea.innerHTML='<div class="error-box">Please fill in Salt and IV</div>'; return; }
+
+  const language = document.getElementById('language').value;
+  const entries = document.querySelectorAll('.key-entry');
+  const answers = [];
+  entries.forEach(entry => {
+    const id = entry.id.replace('key-entry-','');
+    const el = document.getElementById(`key-answer-${id}`);
+    if (el) answers.push(el.value);
+  });
+  if (!answers.length) { errArea.innerHTML='<div class="error-box">Please add at least one passphrase dimension</div>'; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Decrypting...';
+
+  try {
+    const salt = b64ToBuf(saltB64), iv = b64ToBuf(ivB64), cipher = b64ToBuf(ciphertext);
+    const rawKey = answers.map(a=>normalizeInput(a,language)).join('|');
+    const km = await crypto.subtle.importKey('raw',new TextEncoder().encode(rawKey),'PBKDF2',false,['deriveKey']);
+    const aesKey = await crypto.subtle.deriveKey(
+      {name:'PBKDF2',salt:salt.buffer,iterations:600000,hash:'SHA-256'},
+      km, {name:'AES-GCM',length:256}, false, ['decrypt']
+    );
+    const plain = new TextDecoder().decode(
+      await crypto.subtle.decrypt({name:'AES-GCM',iv:iv.buffer},aesKey,cipher.buffer)
+    );
+    renderResult(plain);
+  } catch {
+    errArea.innerHTML = '<div class="error-box">Decryption failed: wrong answer order or content. Check your passphrase arrangement.</div>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Decrypt Locally';
+  }
+}
+
+function renderResult(raw) {
+  const area = document.getElementById('result-area');
+  let structured = null;
+  try { const p=JSON.parse(raw); if(p?.v===1&&Array.isArray(p.entries)) structured=p; } catch {}
+  if (!structured) {
+    area.innerHTML = `<div class="success-box" style="margin-top:16px;">
+      <div class="success-header">✓ Decrypted</div>
+      <pre style="padding:16px;font-size:0.825rem;line-height:1.7;white-space:pre-wrap;word-break:break-all;">${esc(raw)}</pre>
+    </div>`;
+    return;
+  }
+  let html = '';
+  structured.entries.forEach((e,i) => {
+    html += `<div class="entry-card">
+      <div class="entry-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="entry-num">${i+1}</span>
+          <span class="entry-category">${esc(e.category)}</span>
+        </div>
+        <button class="copy-btn" onclick="copyEntry(this,${i})">Copy</button>
+      </div>
+      <pre class="entry-content" id="ec-${i}">${esc(e.content)}</pre>
+    </div>`;
+  });
+  area.innerHTML = `<div class="success-box" style="margin-top:16px;">
+    <div class="success-header">
+      <span>✓ Decrypted</span>
+      <span style="color:#4a8a6a;font-size:0.75rem;">${structured.entries.length} asset clue${structured.entries.length>1?'s':''}</span>
+    </div>${html}</div>
+    <p style="text-align:center;font-size:0.75rem;color:var(--muted);margin-top:12px;">
+      Decrypted entirely in your browser — never passed through any server
+    </p>`;
+}
+function copyEntry(btn,i) {
+  navigator.clipboard.writeText(document.getElementById(`ec-${i}`).textContent).then(()=>{
+    btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy',2000);
+  });
+}
+</script>
+</body>
+</html>
