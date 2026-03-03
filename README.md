@@ -24,13 +24,27 @@ PingVaults is a commercial product. Its business logic, UI, and infrastructure a
 
 ```
 src/
-  crypto.ts          ← Full encryption core (PBKDF2 + AES-256-GCM)
+  crypto.ts                        ← Encryption core (PBKDF2 + AES-256-GCM)
+components/
+  VaultForm.tsx                    ← User input UI + triggers encryption
+  VaultFetch.tsx                   ← Fetch ciphertext from Arweave + triggers decryption
+  VaultSave.tsx                    ← Uploads ciphertext to Arweave, writes metadata to DB
+  VaultEdit.tsx                    ← Decrypt → edit → re-encrypt flow
+app/api/vault/
+  save/route.ts                    ← Server: what it receives and stores (no plaintext ever)
+  fetch/route.ts                   ← Server: what it returns to the client
+app/api/ping/
+  reset/route.ts                   ← Ping check-in reset endpoint
 test/
-  vectors.test.ts    ← Fixed test vectors — anyone can verify independently
+  vectors.test.ts                  ← Fixed test vectors — independently verifiable
 offline/
-  decrypt.html       ← Standalone offline decryptor (English)
-  decrypt-zh.html    ← Standalone offline decryptor (Chinese)
+  decrypt.html                     ← Standalone offline decryptor (English)
+  decrypt-zh.html                  ← Standalone offline decryptor (Chinese)
 ```
+
+The server-side API routes (`save`, `fetch`) are particularly important for auditing:
+- `save/route.ts` shows exactly what the server receives (only ciphertext, salt, IV, key schema types) and that answers are never present
+- `fetch/route.ts` shows what the server returns — no decryption happens server-side
 
 ---
 
