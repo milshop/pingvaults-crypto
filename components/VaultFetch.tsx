@@ -24,6 +24,12 @@ const DEFAULT_VAULT_KEY = "pv_last_vault";
 interface DecryptedEntry {
   category: string;
   content: string;
+  file?: {
+    name: string;
+    type: string;
+    size: number;
+    data: string; // base64
+  };
 }
 
 interface DecryptedPayload {
@@ -56,12 +62,24 @@ function DecryptedView({ raw }: { raw: string }) {
     setTimeout(() => setCopied(null), 2000);
   }
 
+  function downloadFile(file: { name: string; type: string; data: string }) {
+    const blob = new Blob([Uint8Array.from(atob(file.data), c => c.charCodeAt(0))], { type: file.type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   if (!structured) {
     return (
-      <div className="rounded-xl border border-green-900/40 bg-green-950/10 p-4 space-y-2">
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-green-400 font-mono font-medium">{t("decryptedLabel")}</span>
-          <Badge variant="outline" className="text-[10px] text-green-600 border-green-800">
+          <span className="text-xs text-emerald-600 font-mono font-medium">{t("decryptedLabel")}</span>
+          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
             {t("plaintextBadge")}
           </Badge>
         </div>
@@ -75,8 +93,8 @@ function DecryptedView({ raw }: { raw: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-green-400">{t("decryptedLabel")}</span>
-        <Badge variant="outline" className="text-[10px] text-green-600 border-green-800">
+        <span className="text-sm font-medium text-emerald-600">{t("decryptedLabel")}</span>
+        <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
           {structured.entries.length}
         </Badge>
       </div>
@@ -85,7 +103,7 @@ function DecryptedView({ raw }: { raw: string }) {
         <div key={i} className="rounded-xl border border-border bg-muted/10 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 border-b border-border">
             <div className="flex items-center gap-2">
-              <span className="w-6 h-6 flex items-center justify-center rounded-full bg-green-900/30 text-green-400 text-xs font-bold select-none">
+              <span className="w-6 h-6 flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold select-none">
                 {i + 1}
               </span>
               <span className="text-sm font-medium text-foreground">{entry.category}</span>
@@ -103,6 +121,26 @@ function DecryptedView({ raw }: { raw: string }) {
               {entry.content}
             </pre>
           </div>
+          {entry.file && (
+            <div className="px-4 pb-3">
+              <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-emerald-600">📎</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-mono text-emerald-700 truncate">{entry.file.name}</p>
+                    <p className="text-xs font-mono text-emerald-600/60">{(entry.file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => downloadFile(entry.file!)}
+                  className="text-xs font-mono text-emerald-600 hover:text-emerald-700 px-3 py-1.5 rounded border border-emerald-300 hover:bg-emerald-100 transition-colors"
+                >
+                  {t("downloadFile")}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -229,15 +267,26 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{t("fetchDesc")}</p>
+      <div className="flex flex-wrap gap-2">
+        <TrustPill>{t("trustBadge1")}</TrustPill>
+        <TrustPill>{t("trustBadge2")}</TrustPill>
+        <TrustPill>{t("trustBadge3")}</TrustPill>
+      </div>
 
       <Button variant="outline" onClick={handleFetch} disabled={loading} className="w-full">
         {loading ? t("fetching") : t("fetchButton")}
       </Button>
 
       {fetchError && (
-        <p className="text-sm text-red-400 font-mono bg-red-950/30 border border-red-900/40 rounded px-3 py-2">
-          {fetchError}
-        </p>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-1.5">
+          <p className="text-sm text-red-600 font-semibold">{t("fetchErrorTitle")}</p>
+          <p className="text-xs text-red-600 font-mono leading-relaxed">{fetchError}</p>
+          <ul className="space-y-1 text-[11px] text-gray-500">
+            <li>{t("fetchHint1")}</li>
+            <li>{t("fetchHint2")}</li>
+            <li>{t("fetchHint3")}</li>
+          </ul>
+        </div>
       )}
 
       {vault && (
@@ -256,14 +305,14 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground mb-0.5">{t("txLabel")}</p>
-              <p className="font-mono text-xs text-green-400 break-all leading-relaxed">
+              <p className="font-mono text-xs text-emerald-600 break-all leading-relaxed">
                 {vault.tx_id}
               </p>
               <a
                 href={`https://gateway.irys.xyz/${vault.tx_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:underline"
+                className="text-xs text-blue-600 hover:underline"
               >
                 gateway.irys.xyz ↗
               </a>
@@ -273,13 +322,13 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
 
           {/* Passphrase arrangement hint */}
           {vault.keySchema.length > 0 && (
-            <div className="rounded-xl border border-yellow-900/40 bg-yellow-950/10 p-3 space-y-2">
-              <p className="text-xs text-yellow-400 font-semibold">{t("schemaHintTitle")}</p>
+            <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+              <p className="text-xs text-yellow-600 font-semibold">{t("schemaHintTitle")}</p>
               <div className="flex flex-wrap items-center gap-1.5">
                 {vault.keySchema.map((item, i) => (
                   <span key={i} className="flex items-center gap-1">
                     {i > 0 && <span className="text-muted-foreground/50 text-xs">→</span>}
-                    <span className="px-2 py-0.5 rounded-md bg-yellow-900/20 border border-yellow-800/30 text-xs text-yellow-300 font-mono">
+                    <span className="px-2 py-0.5 rounded-md bg-yellow-50 border border-yellow-200 text-xs text-yellow-600 font-mono">
                       {i + 1}. {kt(item.type as string)}
                     </span>
                   </span>
@@ -294,9 +343,13 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
           {/* Decrypt form */}
           {!decryptResult && (
             <form onSubmit={handleDecrypt} className="space-y-3">
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                <p className="text-sm font-semibold text-gray-800">{t("decryptGuideTitle")}</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{t("decryptGuideBody")}</p>
+              </div>
               {vault.keySchema.map((item, i) => (
                 <div key={i} className="space-y-1.5">
-                  <Label className="text-xs text-yellow-400/80">
+                  <Label className="text-xs text-yellow-600">
                     {i + 1}. {kt(item.type as string)}
                     {item.question && (
                       <span className="ml-1.5 text-muted-foreground font-normal italic">
@@ -324,9 +377,15 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
               </Button>
 
               {decryptError && (
-                <p className="text-sm text-red-400 font-mono bg-red-950/30 border border-red-900/40 rounded px-3 py-2">
-                  {decryptError}
-                </p>
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-1.5">
+                  <p className="text-sm text-red-600 font-semibold">{t("decryptErrorTitle")}</p>
+                  <p className="text-xs text-red-600 font-mono leading-relaxed">{decryptError}</p>
+                  <ul className="space-y-1 text-[11px] text-gray-500">
+                    <li>{t("decryptHint1")}</li>
+                    <li>{t("decryptHint2")}</li>
+                    <li>{t("decryptHint3")}</li>
+                  </ul>
+                </div>
               )}
             </form>
           )}
@@ -334,6 +393,10 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
           {/* Decrypt result */}
           {decryptResult && (
             <div className="space-y-3">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 space-y-1.5">
+                <p className="text-sm font-semibold text-blue-600">{t("recoverySuccessTitle")}</p>
+                <p className="text-xs text-gray-500 leading-relaxed">{t("recoverySuccessBody")}</p>
+              </div>
               <DecryptedView raw={decryptResult} />
               <button
                 type="button"
@@ -347,5 +410,13 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
         </div>
       )}
     </div>
+  );
+}
+
+function TrustPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-mono text-blue-600">
+      {children}
+    </span>
   );
 }

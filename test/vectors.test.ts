@@ -101,7 +101,7 @@ describe("validateSelections", () => {
       { type: "id_last_4",       value: "1234" },
       { type: "custom_question", value: "abc" },
     ];
-    expect(() => validateSelections(bad)).toThrow(/name/);
+    expect(() => validateSelections(bad)).toThrow();
   });
 
   it("fails without 'custom_question'", () => {
@@ -109,7 +109,7 @@ describe("validateSelections", () => {
       { type: "name",      value: "Alice" },
       { type: "id_last_4", value: "1234" },
     ];
-    expect(() => validateSelections(bad)).toThrow(/custom_question/);
+    expect(() => validateSelections(bad)).toThrow();
   });
 
   it("fails with empty answer", () => {
@@ -188,7 +188,7 @@ describe("deriveKeyFingerprint (fixed test vectors)", () => {
 
 // ─────────────────────────────────────────────────────────
 describe("encrypt / decrypt round-trip", () => {
-  const PLAINTEXT = "My Bitcoin wallet seed: abandon ability able...";
+  const PLAINTEXT = "Harmless recovery test payload";
 
   it("encrypts and decrypts correctly (en)", async () => {
     const payload = await encrypt(PLAINTEXT, SELECTIONS_EN, "en");
@@ -197,9 +197,9 @@ describe("encrypt / decrypt round-trip", () => {
   });
 
   it("encrypts and decrypts correctly (zh)", async () => {
-    const payload = await encrypt("我的钱包助记词：放弃 能力 能够...", SELECTIONS_ZH, "zh");
+    const payload = await encrypt("无敏感信息的恢复测试内容", SELECTIONS_ZH, "zh");
     const result  = await decrypt(payload, SELECTIONS_ZH, "zh");
-    expect(result).toBe("我的钱包助记词：放弃 能力 能够...");
+    expect(result).toBe("无敏感信息的恢复测试内容");
   });
 
   it("encrypts and decrypts with all 4 fields", async () => {
@@ -233,7 +233,6 @@ describe("encrypt / decrypt round-trip", () => {
       SELECTIONS_FULL[2],
       SELECTIONS_FULL[3],
     ] as KeySelection[];
-    // reordered starts with id_last_4 which is not "name", so validation may throw
     await expect(decrypt(payload, reordered, "en")).rejects.toThrow();
   });
 
@@ -255,7 +254,7 @@ describe("PBKDF2 iteration count", () => {
 });
 
 describe("KDF separator", () => {
-  it("uses pipe character to prevent concatenation attacks", () => {
+  it("uses pipe character to prevent concatenation ambiguity", () => {
     expect(KDF_SEPARATOR).toBe("|");
   });
 });

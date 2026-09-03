@@ -11,10 +11,10 @@
 
 PingVaults is a commercial product. Its business logic, UI, and infrastructure are proprietary.
 
-**But the encryption layer is different.** The only code that ever touches your plaintext or answers runs entirely in your browser. We publish it here so you can:
+**But the encryption layer is different.** The core cryptographic operations run in the browser. We publish the relevant core, UI paths, API routes, and offline decryptors here so you can:
 
-- Audit the algorithm for backdoors
-- Verify that no answers or keys are ever transmitted
+- Inspect the algorithm and its implementation
+- Check the intended save payload for answers or keys
 - Run independent tests with your own inputs
 - Inspect the offline decryptor HTML files
 
@@ -31,7 +31,7 @@ components/
   VaultSave.tsx                    ← Uploads ciphertext to Arweave, writes metadata to DB
   VaultEdit.tsx                    ← Decrypt → edit → re-encrypt flow
 app/api/vault/
-  save/route.ts                    ← Server: what it receives and stores (no plaintext ever)
+  save/route.ts                    ← Server: validation for the intended ciphertext-only save payload
   fetch/route.ts                   ← Server: what it returns to the client
 app/api/ping/
   reset/route.ts                   ← Ping check-in reset endpoint
@@ -43,7 +43,7 @@ offline/
 ```
 
 The server-side API routes (`save`, `fetch`) are particularly important for auditing:
-- `save/route.ts` shows exactly what the server receives (only ciphertext, salt, IV, key schema types) and that answers are never present
+- `save/route.ts` shows what the intended save endpoint accepts and stores
 - `fetch/route.ts` shows what the server returns — no decryption happens server-side
 
 ---
@@ -59,7 +59,7 @@ The server-side API routes (`save`, `fetch`) are particularly important for audi
 | Key structure | `PBKDF2(normalize(a₀) \| normalize(a₁) \| … \| normalize(aₙ), salt)` |
 | Order sensitivity | `[name, question]` ≠ `[question, name]` — order is part of the key |
 
-**No secret algorithms. No custom crypto. Standard WebCrypto API only.**
+The implementation uses standard WebCrypto primitives rather than a custom cipher. Security still depends on phrase quality, endpoint integrity, browser code, and correct use.
 
 ---
 
@@ -84,11 +84,13 @@ Your answers (browser only)
    encrypt(plaintext)         ← random 12-byte IV
         │
         ▼
-   ciphertext (Base64)        ← ONLY this leaves your browser
+   ciphertext (Base64)        ← sent with public parameters and recovery metadata
 ```
 
-**What the server receives:** `ciphertext`, `salt`, `iv`, key schema types, question text  
-**What the server NEVER receives:** answers, derived keys, plaintext
+**Intended vault-save payload:** `ciphertext`, `salt`, `iv`, key schema types, question text
+**Intentionally omitted from that payload:** answers, derived keys, plaintext
+
+This describes the published code path, not a cryptographic attestation of the complete proprietary deployment. Inspect live network behavior and treat deployment integrity as a separate trust boundary.
 
 ---
 
@@ -113,8 +115,8 @@ The test suite includes:
 
 The `offline/` directory contains standalone HTML files that:
 - Implement the same algorithm as `src/crypto.ts`
-- Have **zero external dependencies** — no CDN, no network requests
-- Work entirely offline in any modern browser
+- Have zero CDN or library dependencies
+- Can work offline from exported ciphertext; the optional TxID retrieval button makes requests to Irys or Arweave gateways
 - Can be saved and used even if pingvaults.com is unreachable
 
 Download the appropriate file and open it in any browser:
@@ -129,7 +131,7 @@ The live site at [pingvaults.com/verify](https://www.pingvaults.com/verify) publ
 
 1. **Build-time SHA-256 hashes** of this file and other critical source files
 2. **A batch verification script** you can run locally: `pbpaste | bash`
-3. **JS bundle integrity steps** to verify the deployed JavaScript matches a local build
+3. **JS bundle hashing steps** that can record and compare delivered chunks, but cannot prove unpublished application source
 4. **A live CSP header inspector** showing which origins the page's JS is allowed to contact
 
 ---
@@ -139,17 +141,19 @@ The live site at [pingvaults.com/verify](https://www.pingvaults.com/verify) publ
 - **Key uniqueness:** Each encryption generates a fresh random salt and IV. Two encryptions of the same plaintext with the same answers produce different ciphertext.
 - **Authentication:** AES-GCM includes a 128-bit authentication tag. Tampered ciphertext will always fail decryption — no silent corruption.
 - **Normalization transparency:** Input normalization rules are fully documented and tested. Users are shown exactly how their answers will be processed before they commit.
-- **Order sensitivity:** The sequence of key fields is intentional and part of the key. This prevents an attacker who knows some answers from brute-forcing the remainder.
+- **Order sensitivity:** The sequence of key fields is intentional and part of the key. It is stored as recovery metadata and should not be treated as additional entropy.
+- **Phrase quality:** PBKDF2 raises the cost of each guess but cannot make names, dates, phone digits, or other predictable values secure. Use a unique, randomly generated recovery phrase as the primary secret.
+- **Assurance status:** The published artifacts have not completed an independent security audit or penetration test as of September 3, 2026.
 
 ---
 
 ## License
 
-MIT — use freely for any purpose, including commercial.  
+MIT — use freely for any purpose, including commercial.
 Attribution appreciated but not required.
 
 ---
 
 ## Main product
 
-[PingVaults](https://www.pingvaults.com) — Zero-knowledge digital estate vault with dead man's switch delivery.
+[PingVaults](https://www.pingvaults.com) — Client-side encrypted recovery instructions with inactivity-based contact delivery.

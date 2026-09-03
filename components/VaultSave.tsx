@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,14 @@ import { KEY_TYPE_LABELS, decrypt } from "@/lib/crypto";
 import type { KeySelection } from "@/lib/crypto";
 import type { VaultPayload, KeySchemaItemSafe } from "@/components/VaultForm";
 import type { Language } from "@/lib/crypto";
-import { PingConfig, PING_CONFIG_DEFAULTS } from "@/components/PingConfig";
+import {
+  PingConfig,
+  PING_CONFIG_DEFAULTS,
+} from "@/components/PingConfig";
 import type { PingConfigData } from "@/components/PingConfig";
 import { ArweaveSyncStatus } from "@/components/ArweaveSyncStatus";
+import type { UserPlan } from "@/lib/plans";
+import { trackEvent } from "@/lib/analytics";
 
 const DEFAULT_VAULT_KEY = "pv_last_vault";
 
@@ -29,10 +34,24 @@ export interface LocalVaultMeta {
 interface VaultSaveProps {
   payload: VaultPayload;
   vaultKey?: string;
-  onSaved: (txId: string, arweaveUrl: string) => void;
+  mode?: "create" | "edit";
+  initialPingConfig?: PingConfigData | null;
+  userPlan?: UserPlan;
+  onSaved?: (txId: string, arweaveUrl: string) => void;
+  onDone?: () => void;
+  onBack?: () => void;
 }
 
-export function VaultSave({ payload, vaultKey = DEFAULT_VAULT_KEY, onSaved }: VaultSaveProps) {
+export function VaultSave({
+  payload,
+  vaultKey = DEFAULT_VAULT_KEY,
+  mode = "create",
+  initialPingConfig = null,
+  userPlan = "free",
+  onSaved,
+  onDone,
+  onBack,
+}: VaultSaveProps) {
   const t = useTranslations("VaultSave");
   const tPing = useTranslations("PingConfig");
   const kt = useTranslations("keyTypes");
@@ -41,14 +60,26 @@ export function VaultSave({ payload, vaultKey = DEFAULT_VAULT_KEY, onSaved }: Va
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ txId: string; dbSaved: boolean; note?: string } | null>(null);
-  const [pingEnabled, setPingEnabled] = useState(false);
-  const [pingConfig, setPingConfig] = useState<PingConfigData>(PING_CONFIG_DEFAULTS);
+  const [pingEnabled, setPingEnabled] = useState(Boolean(initialPingConfig?.emergencyEmail));
+  const [pingConfig, setPingConfig] = useState<PingConfigData>(initialPingConfig ?? PING_CONFIG_DEFAULTS);
+  const [drillPassedAt, setDrillPassedAt] = useState<string | null>(null);
 
   const canSave = !pingEnabled || pingConfig.emergencyEmail.trim().includes("@");
+  const summaryCategories = payload.summary?.categories ?? [];
+  const summaryCount = payload.summary?.entryCount ?? 0;
+  const displayLanguage = payload.keyLanguage.toUpperCase();
+  const keyOrder = payload.keySchema.map((item) => ({
+    ...item,
+    label: kt(item.type as keyof typeof KEY_TYPE_LABELS),
+  }));
+  const compactMeta = useMemo(() => ({
+    salt: `${payload.salt.slice(0, 8)}...${payload.salt.slice(-6)}`,
+    iv: `${payload.iv.slice(0, 8)}...${payload.iv.slice(-6)}`,
+  }), [payload.iv, payload.salt]);
 
   async function handleSave() {
     if (!canSave) {
-      setError("Please set an emergency contact email before saving.");
+      setError(t("confirmErrorMissingContact"));
       return;
     }
     setLoading(true);
@@ -89,8 +120,19 @@ export function VaultSave({ payload, vaultKey = DEFAULT_VAULT_KEY, onSaved }: Va
       localStorage.setItem(vaultKey, JSON.stringify(meta));
 
       setResult({ txId: data.tx_id, dbSaved: data.db_saved, note: data.note });
-      onSaved(data.tx_id, data.arweave_url);
+      trackEvent("Vault Saved", {
+        locale,
+        plan: userPlan,
+        mode,
+        ping_enabled: pingEnabled,
+        arweave_only: !data.db_saved,
+      });
+      if (pingEnabled) {
+        trackEvent("Ping Enabled", { locale, plan: userPlan, mode });
+      }
+      onSaved?.(data.tx_id, data.arweave_url);
     } catch (err) {
+      trackEvent("Vault Save Failed", { locale, plan: userPlan, mode });
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
@@ -107,74 +149,157 @@ export function VaultSave({ payload, vaultKey = DEFAULT_VAULT_KEY, onSaved }: Va
     a.download = `pingvaults-meta-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    trackEvent("Vault Metadata Exported", { locale, plan: userPlan, mode });
   }
 
   if (result) {
     const savedAt = new Date().toLocaleString();
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Badge className="bg-green-900/50 text-green-300 border-green-700">
-            {t("savedBadge")}
-          </Badge>
-          {result.dbSaved
-            ? <Badge variant="outline" className="text-blue-400 border-blue-800 text-xs">{t("dbBadge")}</Badge>
-            : <Badge variant="outline" className="text-yellow-400 border-yellow-800 text-xs">{t("arweaveOnlyBadge")}</Badge>
-          }
+      <div className="space-y-5">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 md:p-5 space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-emerald-100 text-emerald-600 border-emerald-300">
+                  {mode === "edit" ? t("updatedBadge") : t("savedBadge")}
+                </Badge>
+                {result.dbSaved ? (
+                  <Badge variant="outline" className="text-blue-600 border-blue-200 text-xs">{t("dbBadge")}</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-yellow-600 border-yellow-200 text-xs">{t("arweaveOnlyBadge")}</Badge>
+                )}
+                {pingEnabled && (
+                  <Badge variant="outline" className="text-purple-600 border-purple-200 text-xs">
+                    {t("pingEnabledBadge")}
+                  </Badge>
+                )}
+              </div>
+              <div>
+                <p className="text-base font-semibold text-gray-900">{mode === "edit" ? t("updatedTitle") : t("savedTitle")}</p>
+                <p className="text-sm text-gray-500 leading-relaxed">{t("savedSummary")}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:min-w-[220px]">
+              <SummaryChip label={t("resultEntries")} value={String(summaryCount)} />
+              <SummaryChip label={t("resultLanguage")} value={displayLanguage} />
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <p className="text-[11px] font-mono text-gray-500">{t("txLabel")}</p>
+              <p className="font-mono text-xs text-emerald-600 break-all leading-relaxed">{result.txId}</p>
+              <div className="flex flex-wrap gap-3 text-xs">
+                <a
+                  href={`https://gateway.irys.xyz/${result.txId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {t("irysLink")}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(result.txId)}
+                  className="text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  {t("copyTxId")}
+                </button>
+              </div>
+              <ArweaveSyncStatus txId={result.txId} />
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <p className="text-[11px] font-mono text-gray-500">{t("resultChecklistTitle")}</p>
+              <ul className="space-y-1.5 text-xs text-gray-500">
+                <li>{t("resultChecklist1")}</li>
+                <li>{t("resultChecklist2")}</li>
+                <li>{t("resultChecklist3")}</li>
+              </ul>
+              {drillPassedAt && (
+                <p className="text-[11px] text-emerald-600 font-mono">
+                  {t("lastQuickDrill", { time: drillPassedAt })}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Dry Run Verifier */}
-        <DryRunVerifier payload={payload} />
+        <DryRunVerifier
+          payload={payload}
+          onSuccess={() => {
+            setDrillPassedAt(new Date().toLocaleString());
+            trackEvent("Recovery Drill Passed", { locale, plan: userPlan, mode });
+          }}
+        />
 
-        {/* TxID + Arweave sync status */}
-        <div className="rounded-lg border border-green-900/30 bg-green-950/20 p-3 space-y-1">
-          <p className="text-xs text-muted-foreground">{t("txLabel")}</p>
-          <p className="font-mono text-xs text-green-400 break-all">{result.txId}</p>
-          <a
-            href={`https://gateway.irys.xyz/${result.txId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-blue-400 hover:underline"
-          >
-            {t("irysLink")}
-          </a>
-          <ArweaveSyncStatus txId={result.txId} />
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-blue-600">{t("fullDrillTitle")}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{t("fullDrillBody")}</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-blue-200 text-blue-600 hover:bg-blue-50"
+              onClick={exportMeta}
+            >
+              {t("downloadButton")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-blue-200 text-blue-600 hover:bg-blue-50"
+              onClick={() => {
+                trackEvent("Offline Decryptor Opened", { location: "save_success", locale });
+                window.open(decryptorHref, "_blank", "noopener,noreferrer");
+              }}
+            >
+              {t("openDecryptor")}
+            </Button>
+          </div>
+          <p className="text-[11px] text-gray-500">{t("fullDrillHint")}</p>
         </div>
 
         {result.note && (
-          <p className="text-xs text-yellow-400 font-mono bg-yellow-950/20 border border-yellow-900/30 rounded px-3 py-2">
+          <p className="text-xs text-yellow-600 font-mono bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
             {result.note}
           </p>
         )}
 
-        {/* Backup section */}
-        <div className="rounded-lg border border-orange-900/50 bg-orange-950/15 p-4 space-y-3">
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 space-y-3">
           <div>
-            <p className="text-sm font-semibold text-orange-300">{t("backupTitle")}</p>
+            <p className="text-sm font-semibold text-orange-600">{t("backupTitle")}</p>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("backupBody")}</p>
           </div>
 
           <MetaPreview txId={result.txId} payload={payload} savedAt={savedAt} kt={kt} t={t} />
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-full border-orange-800/50 text-orange-400 hover:bg-orange-950/30"
-            onClick={exportMeta}
-          >
-            {t("downloadButton")}
-          </Button>
-
           <p className="text-xs text-muted-foreground text-center">
             {t.rich("offlineNote", {
               link: (chunks) => (
-                <a href={decryptorHref} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                <a href={decryptorHref} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                   {chunks}
                 </a>
               ),
             })}
           </p>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" className="flex-1" onClick={() => onDone?.()}>
+            {mode === "edit" ? t("backToDashboardUpdated") : t("backToDashboardSaved")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={exportMeta}
+          >
+            {t("downloadButton")}
+          </Button>
         </div>
       </div>
     );
@@ -182,62 +307,122 @@ export function VaultSave({ payload, vaultKey = DEFAULT_VAULT_KEY, onSaved }: Va
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">{t("uploadDesc")}</p>
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 md:p-5 space-y-4">
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <TrustPill>{t("trustLocal")}</TrustPill>
+            <TrustPill>{t("trustNoAnswers")}</TrustPill>
+            <TrustPill>{t("trustSingleVault")}</TrustPill>
+          </div>
+          <div>
+            <p className="text-base font-semibold text-gray-900">{t("confirmTitle")}</p>
+            <p className="text-sm text-gray-500 leading-relaxed">{t("uploadDesc")}</p>
+          </div>
+        </div>
 
-      {/* ── Dead Man's Switch toggle ── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden">
+        <div className="grid gap-3 md:grid-cols-2">
+          <SummaryCard label={t("confirmEntries")} value={String(summaryCount)} />
+          <SummaryCard label={t("confirmLanguage")} value={displayLanguage} />
+          <SummaryCard label={t("confirmSalt")} value={compactMeta.salt} />
+          <SummaryCard label={t("confirmIv")} value={compactMeta.iv} />
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold text-gray-800">{t("confirmCategories")}</p>
+            <p className="text-xs text-gray-500 font-mono">{t("zeroKnowledgeNote")}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {summaryCategories.map((category) => (
+              <span
+                key={category}
+                className="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs text-gray-700"
+              >
+                {category}
+              </span>
+            ))}
+            {summaryCategories.length === 0 && (
+              <span className="text-xs text-gray-500">{t("confirmNoCategory")}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-800">{t("confirmKeyOrder")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {keyOrder.map((item, index) => (
+              <span key={`${item.type}-${index}`} className="flex items-center gap-2">
+                {index > 0 && <span className="text-gray-300">→</span>}
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-600">
+                  {index + 1}. {item.label}
+                </span>
+                {item.question && (
+                  <span className="text-[11px] text-gray-500">&quot;{item.question}&quot;</span>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-100 overflow-hidden">
         <button
           type="button"
           onClick={() => setPingEnabled((v) => !v)}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-800/30 transition-colors"
+          className="w-full flex flex-col items-start gap-3 px-5 py-4 hover:bg-gray-100 transition-colors sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-center gap-3">
             <span className="text-base">📡</span>
             <div className="text-left">
-              <p className="text-sm font-semibold text-zinc-100">{t("pingToggleTitle")}</p>
-              <p className="text-xs text-zinc-500 mt-0.5">{t("pingToggleSub")}</p>
+              <p className="text-sm font-semibold text-gray-900">{t("pingToggleTitle")}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{t("pingToggleSub")}</p>
             </div>
           </div>
           <span className={`font-mono text-xs px-2.5 py-1 rounded-full border transition-colors ${
             pingEnabled
-              ? "bg-green-900/40 border-green-700 text-green-400"
-              : "bg-zinc-800/50 border-zinc-700 text-zinc-500"
+              ? "bg-emerald-100 border-emerald-300 text-emerald-600"
+              : "bg-gray-100 border-gray-300 text-gray-500"
           }`}>
             {pingEnabled ? t("pingToggleOn") : t("pingToggleOff")}
           </span>
         </button>
 
         {pingEnabled && (
-          <div className="border-t border-zinc-800/60 p-5">
-            <PingConfig value={pingConfig} onChange={setPingConfig} />
+          <div className="border-t border-gray-200 p-5">
+            <PingConfig value={pingConfig} onChange={setPingConfig} userPlan={userPlan} />
           </div>
         )}
       </div>
 
       {error && (
-        <p className="text-sm text-red-400 font-mono bg-red-950/30 border border-red-900/40 rounded px-3 py-2">
-          {error}
-        </p>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-1">
+          <p className="text-sm text-red-600 font-semibold">{t("confirmErrorTitle")}</p>
+          <p className="text-xs text-red-600/90 font-mono leading-relaxed">{error}</p>
+        </div>
       )}
 
-      <Button
-        onClick={handleSave}
-        disabled={loading || !canSave}
-        className="w-full"
-        title={!canSave ? "Set an emergency contact email first" : undefined}
-      >
-        {loading ? (
-          <span className="flex items-center gap-2">
-            <span className="animate-spin inline-block">⟳</span>
-            {t("saving")}
-          </span>
-        ) : !canSave ? (
-          tPing("saveDisabled")
-        ) : (
-          t("saveButton")
-        )}
-      </Button>
-      <p className="text-xs text-muted-foreground font-mono">{t("zeroKnowledgeNote")}</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button type="button" variant="outline" className="flex-1" onClick={() => onBack?.()}>
+          {t("backToModify")}
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={loading || !canSave}
+          className="flex-1"
+          title={!canSave ? t("confirmErrorMissingContact") : undefined}
+        >
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="animate-spin inline-block">⟳</span>
+              {t("saving")}
+            </span>
+          ) : !canSave ? (
+            tPing("saveDisabled")
+          ) : (
+            t("confirmSaveButton")
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -246,9 +431,10 @@ export function VaultSave({ payload, vaultKey = DEFAULT_VAULT_KEY, onSaved }: Va
 
 interface DryRunVerifierProps {
   payload: VaultPayload;
+  onSuccess?: () => void;
 }
 
-function DryRunVerifier({ payload }: DryRunVerifierProps) {
+function DryRunVerifier({ payload, onSuccess }: DryRunVerifierProps) {
   const t = useTranslations("VaultSave");
   const kt = useTranslations("keyTypes");
   const [answers, setAnswers] = useState<string[]>(payload.keySchema.map(() => ""));
@@ -276,6 +462,7 @@ function DryRunVerifier({ payload }: DryRunVerifierProps) {
         payload.keyLanguage
       );
       setStatus("ok");
+      onSuccess?.();
     } catch {
       setStatus("fail");
     }
@@ -284,15 +471,15 @@ function DryRunVerifier({ payload }: DryRunVerifierProps) {
   return (
     <div className={`rounded-lg border p-4 space-y-3 ${
       status === "ok"
-        ? "border-green-800/50 bg-green-950/15"
+        ? "border-emerald-200 bg-emerald-50"
         : status === "fail"
-        ? "border-red-800/50 bg-red-950/15"
-        : "border-blue-900/40 bg-blue-950/10"
+        ? "border-red-200 bg-red-50"
+        : "border-blue-200 bg-blue-50"
     }`}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className={`text-sm font-semibold ${
-            status === "ok" ? "text-green-300" : status === "fail" ? "text-red-300" : "text-blue-300"
+            status === "ok" ? "text-emerald-600" : status === "fail" ? "text-red-600" : "text-blue-600"
           }`}>
             {status === "ok" ? t("dryRunTitleOk")
               : status === "fail" ? t("dryRunTitleFail")
@@ -303,6 +490,13 @@ function DryRunVerifier({ payload }: DryRunVerifierProps) {
               : status === "fail" ? t("dryRunBodyFail")
               : t("dryRunBodyDefault")}
           </p>
+          {status === "fail" && (
+            <ul className="mt-2 space-y-1 text-[11px] text-gray-500">
+              <li>{t("dryRunHint1")}</li>
+              <li>{t("dryRunHint2")}</li>
+              <li>{t("dryRunHint3")}</li>
+            </ul>
+          )}
         </div>
         {status !== "running" && status !== "ok" && (
           <button
@@ -335,7 +529,7 @@ function DryRunVerifier({ payload }: DryRunVerifierProps) {
                   setAnswers(next);
                   if (status === "fail") setStatus("idle");
                 }}
-                className={`text-sm font-mono ${status === "fail" ? "border-red-700" : ""}`}
+                className={`text-sm font-mono ${status === "fail" ? "border-red-300" : ""}`}
                 autoComplete="off"
               />
             </div>
@@ -394,10 +588,10 @@ function MetaPreview({ txId, payload, savedAt, kt, t }: MetaPreviewProps) {
   }
 
   return (
-    <div className="rounded-md border border-orange-900/30 bg-black/30 overflow-hidden">
+    <div className="rounded-md border border-orange-200 bg-orange-50 overflow-hidden">
       <div className="px-3 py-2.5 space-y-1.5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-mono text-orange-400/80">{t("metaSchemaLabel")}</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-mono text-orange-600/80">{t("metaSchemaLabel")}</p>
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -410,36 +604,62 @@ function MetaPreview({ txId, payload, savedAt, kt, t }: MetaPreviewProps) {
           {payload.keySchema.map((item, i) => (
             <span key={i} className="flex items-center gap-1">
               {i > 0 && <span className="text-muted-foreground/40 text-xs">→</span>}
-              <span className="px-1.5 py-0.5 rounded bg-orange-950/30 border border-orange-900/30 text-xs font-mono text-orange-300">
+              <span className="px-1.5 py-0.5 rounded bg-orange-50 border border-orange-200 text-xs font-mono text-orange-600">
                 {i + 1}. {kt(item.type as string)}
               </span>
             </span>
           ))}
         </div>
         <p className="text-[10px] font-mono text-muted-foreground">
-          TxID: <span className="text-green-500">{txId.slice(0, 20)}…</span>
-          {" · "}Salt: <span className="text-blue-400">{payload.salt.slice(0, 8)}…</span>
-          {" · "}IV: <span className="text-blue-400">{payload.iv.slice(0, 8)}…</span>
+          TxID: <span className="text-emerald-500 break-all">{txId.slice(0, 20)}…</span>
+          {" · "}Salt: <span className="text-blue-600">{payload.salt.slice(0, 8)}…</span>
+          {" · "}IV: <span className="text-blue-600">{payload.iv.slice(0, 8)}…</span>
         </p>
       </div>
 
       {expanded && (
-        <div className="border-t border-orange-900/30">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-orange-950/10">
+        <div className="border-t border-orange-200">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-orange-50">
             <span className="text-[10px] text-muted-foreground font-mono">{t("fullMetaJson")}</span>
             <button
               type="button"
               onClick={copyJson}
-              className="text-[10px] text-orange-400 hover:text-orange-200 transition-colors"
+              className="text-[10px] text-orange-600 hover:text-orange-800 transition-colors"
             >
               {copied ? t("copied") : t("copy")}
             </button>
           </div>
-          <pre className="text-[10px] font-mono text-orange-300/80 p-3 overflow-x-auto leading-relaxed">
+          <pre className="text-[10px] font-mono text-orange-600/80 p-3 overflow-x-auto leading-relaxed">
             {jsonStr}
           </pre>
         </div>
       )}
     </div>
+  );
+}
+
+function SummaryChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+      <p className="text-[11px] text-gray-400 font-mono">{label}</p>
+      <p className="text-sm text-gray-800 font-mono mt-1">{value}</p>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+      <p className="text-[11px] text-gray-400 font-mono">{label}</p>
+      <p className="text-sm text-gray-800 font-mono mt-1 break-all">{value}</p>
+    </div>
+  );
+}
+
+function TrustPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-mono text-emerald-600">
+      {children}
+    </span>
   );
 }

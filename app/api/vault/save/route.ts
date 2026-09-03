@@ -1,12 +1,13 @@
 /**
  * POST /api/vault/save
- * Zero-knowledge: only receives ciphertext + key schema + ping config.
- * Never receives plaintext or decryption answers.
+ * Intended privacy boundary: this endpoint accepts ciphertext, recovery schema,
+ * and ping configuration. The client does not include plaintext or recovery values.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getIrysUploader, ARWEAVE_GATEWAY } from "@/lib/irys";
-import { getVaultByEmail, putVault, updateVault, removePingConfig } from "@/lib/dynamodb";
+import { getVaultByEmail, putVault, updateVault, removePingConfig, getUserPlan } from "@/lib/dynamodb";
 import { getSessionFromRequest } from "@/lib/session";
+import { getPlanLimits } from "@/lib/plans";
 import { randomUUID } from "crypto";
 
 const DEFAULT_INITIAL_DAYS  = 30;   // days before first ping
@@ -38,13 +39,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    // ── Plan enforcement ────────────────────────────────
+    const planRecord = await getUserPlan(session.email);
+    const userPlan = planRecord?.user_plan ?? "free";
+    const limits = getPlanLimits(userPlan);
+
+    // Free tier: reject backup email
+    if (!limits.backupEmail && backup_email) {
+      return NextResponse.json(
+        { error: "Backup email requires a paid plan" },
+        { status: 403 }
+      );
+    }
+
     const now = Date.now();
     const hasPing = !!emergency_email; // ping system is opt-in
 
     // Only compute ping fields when user opted in
-    const initialDays  = hasPing ? Math.min(Math.max(Number(ping_initial_days)  || DEFAULT_INITIAL_DAYS,  1), 365) : undefined;
-    const intervalDays = hasPing ? Math.min(Math.max(Number(ping_interval_days) || DEFAULT_INTERVAL_DAYS, 1), 30)  : undefined;
-    const maxCount     = hasPing ? Math.min(Math.max(Number(ping_max_count)     || DEFAULT_MAX_PINGS,     1), 10)  : undefined;
+    // Free tier: force fixed DMS parameters regardless of user input
+    let initialDays:  number | undefined;
+    let intervalDays: number | undefined;
+    let maxCount:     number | undefined;
+
+    if (hasPing) {
+      if (!limits.customDms) {
+        initialDays  = limits.fixedDmsInitialDays;
+        intervalDays = limits.fixedDmsIntervalDays;
+        maxCount     = limits.fixedDmsMaxCount;
+      } else {
+        initialDays  = Math.min(Math.max(Number(ping_initial_days)  || DEFAULT_INITIAL_DAYS,  1), 365);
+        intervalDays = Math.min(Math.max(Number(ping_interval_days) || DEFAULT_INTERVAL_DAYS, 1), 30);
+        maxCount     = Math.min(Math.max(Number(ping_max_count)     || DEFAULT_MAX_PINGS,     1), 10);
+      }
+    }
     const nextPingAt   = hasPing ? now + initialDays! * 24 * 60 * 60 * 1000 : undefined;
 
     // Upload ciphertext to Irys / Arweave
@@ -63,7 +90,6 @@ export async function POST(request: NextRequest) {
       tags: [
         { name: "App-Name", value: "PingVaults" },
         { name: "Content-Type", value: "application/octet-stream" },
-        { name: "User-Email-Hash", value: Buffer.from(session.email).toString("base64") },
       ],
     });
     const txId = receipt.id;

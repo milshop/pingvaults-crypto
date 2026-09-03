@@ -150,8 +150,8 @@
   <header>
     <div style="font-size:2rem;margin-bottom:8px;">🧊</div>
     <h1>PingVaults Offline Decryptor</h1>
-    <p>Runs entirely in your browser · No network requests · Answers never leave this page</p>
-    <span class="badge">Zero-Knowledge · AES-256-GCM · PBKDF2</span>
+    <p>Local decryption · Network used only if you choose TxID retrieval · Recovery values stay in this page</p>
+    <span class="badge">Client-side · AES-256-GCM · PBKDF2</span>
   </header>
 
   <!-- Step 1 -->
@@ -163,7 +163,7 @@
     </div>
     <div id="txid-input">
       <div class="field">
-        <label>Arweave TxID (permanent on-chain address)</label>
+        <label>Arweave transaction ID (persistent ciphertext reference)</label>
         <input id="txid" type="text" placeholder="e.g. Dld7RnIBOSKXKF8q9eMbFHm3P3cB..." />
       </div>
       <button class="btn btn-secondary" onclick="fetchCiphertext()" id="fetch-btn">
@@ -207,7 +207,7 @@
 
   <!-- Step 3 -->
   <div class="card">
-    <div class="card-title">Step 3 — Passphrase Answers</div>
+    <div class="card-title">Step 3 — Recovery Inputs</div>
     <div id="schema-hint-area"></div>
     <div id="key-entries"></div>
     <button class="btn btn-secondary" onclick="addKeyEntry()" style="margin-top:10px;">
@@ -233,9 +233,9 @@
   </div>
 
   <p class="privacy-note">
-    This tool runs entirely in your browser using the Web Crypto API (<span>AES-256-GCM + PBKDF2</span>).<br>
-    All operations happen on your device — answers and plaintext never leave this page.<br>
-    Disconnect from the internet and open this file for fully offline use.
+    Decryption runs in this page using the Web Crypto API (<span>AES-256-GCM + PBKDF2</span>).<br>
+    Import exported ciphertext and disconnect first for a fully offline path.<br>
+    TxID download contacts an Irys or Arweave gateway; recovery values and plaintext are not included in that request.
   </p>
 </div>
 
@@ -244,13 +244,13 @@ const KEY_TYPE_LABELS = {
   name: "Full Name",
   id_last_4: "ID Last 4 Digits",
   phone_last_4: "Phone Last 4 Digits",
-  custom_question: "Custom Question",
+  custom_question: "Recovery Prompt",
 };
 const KEY_TYPE_OPTIONS = {
   name: "Full Name (required)",
   id_last_4: "ID Last 4 Digits",
   phone_last_4: "Phone Last 4 Digits",
-  custom_question: "Custom Question (required)",
+  custom_question: "Recovery Prompt (required)",
 };
 const REQUIRED_TYPES = new Set(["name", "custom_question"]);
 let keyEntryCount = 0;
@@ -283,12 +283,12 @@ function addKeyEntry(typeVal, question, answer) {
       </select>
     </div>
     <div class="field" id="question-field-${id}" style="margin-bottom:8px;display:${isCustom?'block':'none'}">
-      <label>Question text (hint)</label>
-      <input id="key-question-${id}" type="text" value="${esc(question||'')}" placeholder="e.g. What hospital was I born in?" />
+      <label>Recovery prompt (visible metadata)</label>
+      <input id="key-question-${id}" type="text" value="${esc(question||'')}" placeholder="e.g. Enter the phrase on our sealed recovery card" />
     </div>
     <div class="field">
-      <label style="color:#f59e0b;">Answer (local only — never sent)</label>
-      <input id="key-answer-${id}" type="password" value="${esc(answer||'')}" placeholder="Enter answer..." autocomplete="off" />
+      <label style="color:#f59e0b;">Recovery value (local only — never sent)</label>
+      <input id="key-answer-${id}" type="password" value="${esc(answer||'')}" placeholder="Enter the unique recovery phrase or required value..." autocomplete="off" />
     </div>
     <button onclick="removeKeyEntry(${id})" id="remove-btn-${id}"
       style="background:none;border:none;color:#666;font-size:0.75rem;cursor:pointer;margin-top:4px;

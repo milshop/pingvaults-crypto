@@ -19,6 +19,8 @@ import { VaultForm } from "@/components/VaultForm";
 import { CryptoResult } from "@/components/CryptoResult";
 import { TransparencyPanel } from "@/components/TransparencyPanel";
 import { VaultSave } from "@/components/VaultSave";
+import type { PingConfigData } from "@/components/PingConfig";
+import type { UserPlan } from "@/lib/plans";
 
 const DEFAULT_VAULT_KEY = "pv_last_vault";
 
@@ -38,9 +40,31 @@ type Phase =
   | { step: "idle" }
   | { step: "fetching" }
   | { step: "fetch-error"; message: string }
-  | { step: "decrypt"; vault: FetchedVault; answers: string[]; decryptError: string | null; decrypting: boolean }
-  | { step: "editing"; vault: FetchedVault; initialEntries: AssetEntry[]; initialSelections: KeySelection[]; initialLanguage: Language }
-  | { step: "saving"; payload: VaultPayload; savedTxId: string | null };
+  | {
+      step: "decrypt";
+      vault: FetchedVault;
+      pingConfig: PingConfigData | null;
+      answers: string[];
+      decryptError: string | null;
+      decrypting: boolean;
+    }
+  | {
+      step: "editing";
+      vault: FetchedVault;
+      pingConfig: PingConfigData | null;
+      initialEntries: AssetEntry[];
+      initialSelections: KeySelection[];
+      initialLanguage: Language;
+    }
+  | {
+      step: "saving";
+      payload: VaultPayload;
+      vault: FetchedVault;
+      pingConfig: PingConfigData | null;
+      draftEntries: AssetEntry[];
+      draftSelections: KeySelection[];
+      draftLanguage: Language;
+    };
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -67,9 +91,11 @@ function parseEntries(raw: string): AssetEntry[] {
 
 interface VaultEditProps {
   vaultKey?: string;
+  userPlan?: UserPlan;
+  onSaved?: () => void;
 }
 
-export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
+export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY, userPlan = "free", onSaved }: VaultEditProps) {
   const t  = useTranslations("VaultEdit");
   const kt = useTranslations("keyTypes");
 
@@ -81,6 +107,7 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
     try {
       const localRaw = localStorage.getItem(vaultKey);
       let vault: FetchedVault;
+      let pingConfig: PingConfigData | null = null;
 
       if (localRaw) {
         const local: LocalVaultMeta = JSON.parse(localRaw);
@@ -111,9 +138,26 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
         };
       }
 
+      try {
+        const pingRes = await fetch("/api/ping/config");
+        const pingData = await pingRes.json();
+        if (pingRes.ok && pingData.hasVault && pingData.emergencyEmail) {
+          pingConfig = {
+            emergencyEmail: pingData.emergencyEmail ?? "",
+            backupEmail: pingData.backupEmail ?? "",
+            initialDays: pingData.initialDays ?? 90,
+            intervalDays: pingData.intervalDays ?? 7,
+            maxPings: pingData.maxPings ?? 3,
+          };
+        }
+      } catch {
+        // ignore ping preload failures
+      }
+
       setPhase({
         step: "decrypt",
         vault,
+        pingConfig,
         answers: (vault.keySchema ?? []).map(() => ""),
         decryptError: null,
         decrypting: false,
@@ -149,6 +193,7 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
       setPhase({
         step: "editing",
         vault,
+        pingConfig: phase.step === "decrypt" ? phase.pingConfig : null,
         initialEntries,
         initialSelections,
         initialLanguage: vault.keyLanguage,
@@ -172,9 +217,11 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
           {t("fetchButton")}
         </Button>
         {phase.step === "fetch-error" && (
-          <p className="text-sm text-red-400 font-mono bg-red-950/30 border border-red-900/40 rounded px-3 py-2">
-            {phase.message}
-          </p>
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-1.5">
+            <p className="text-sm text-red-600 font-semibold">{t("fetchErrorTitle")}</p>
+            <p className="text-xs text-red-600 font-mono leading-relaxed">{phase.message}</p>
+            <p className="text-[11px] text-gray-500">{t("fetchErrorHint")}</p>
+          </div>
         )}
       </div>
     );
@@ -192,13 +239,13 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
       <div className="space-y-4">
         {/* Schema hint */}
         {vault.keySchema.length > 0 && (
-          <div className="rounded-xl border border-yellow-900/40 bg-yellow-950/10 p-3 space-y-2">
-            <p className="text-xs text-yellow-400 font-semibold">{t("schemaHintTitle")}</p>
+          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+            <p className="text-xs text-yellow-600 font-semibold">{t("schemaHintTitle")}</p>
             <div className="flex flex-wrap items-center gap-1.5">
               {vault.keySchema.map((item, i) => (
                 <span key={i} className="flex items-center gap-1">
                   {i > 0 && <span className="text-muted-foreground/50 text-xs">→</span>}
-                  <span className="px-2 py-0.5 rounded-md bg-yellow-900/20 border border-yellow-800/30 text-xs text-yellow-300 font-mono">
+                  <span className="px-2 py-0.5 rounded-md bg-yellow-50 border border-yellow-200 text-xs text-yellow-600 font-mono">
                     {i + 1}. {kt(item.type as string)}
                   </span>
                 </span>
@@ -217,7 +264,7 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
         >
           {vault.keySchema.map((item, i) => (
             <div key={i} className="space-y-1.5">
-              <Label className="text-xs text-yellow-400/80">
+              <Label className="text-xs text-yellow-600">
                 {i + 1}. {kt(item.type as string)}
                 {item.question && (
                   <span className="ml-1.5 text-muted-foreground font-normal italic">
@@ -247,9 +294,15 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
           </Button>
 
           {decryptError && (
-            <p className="text-sm text-red-400 font-mono bg-red-950/30 border border-red-900/40 rounded px-3 py-2">
-              {decryptError}
-            </p>
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-1.5">
+              <p className="text-sm text-red-600 font-semibold">{t("decryptErrorTitle")}</p>
+              <p className="text-xs text-red-600 font-mono leading-relaxed">{decryptError}</p>
+              <ul className="space-y-1 text-[11px] text-gray-500">
+                <li>{t("decryptHint1")}</li>
+                <li>{t("decryptHint2")}</li>
+                <li>{t("decryptHint3")}</li>
+              </ul>
+            </div>
           )}
         </form>
 
@@ -269,23 +322,32 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-zinc-200">{t("editTitle")}</p>
+            <p className="text-sm font-semibold text-gray-800">{t("editTitle")}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{t("editDesc")}</p>
           </div>
-          <Badge variant="outline" className="text-green-400 border-green-800 text-xs">
+          <Badge variant="outline" className="text-emerald-600 border-emerald-300 text-xs">
             {t("decryptedBadge")}
           </Badge>
         </div>
 
-        <div className="rounded-lg border border-blue-900/30 bg-blue-950/10 px-3 py-2">
-          <p className="text-xs text-blue-400/80 font-mono">{t("editNote")}</p>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+          <p className="text-xs text-blue-600 font-mono">{t("editNote")}</p>
         </div>
 
         <VaultForm
           initialEntries={phase.initialEntries}
           initialSelections={phase.initialSelections}
           initialLanguage={phase.initialLanguage}
-          onPayloadReady={(payload) => setPhase({ step: "saving", payload, savedTxId: null })}
+          onPayloadReady={(payload, draft) =>
+            setPhase({
+              step: "saving",
+              payload,
+              vault: phase.vault,
+              pingConfig: phase.pingConfig,
+              draftEntries: draft.entries,
+              draftSelections: draft.selections,
+              draftLanguage: draft.language,
+            })}
         />
 
         <button
@@ -304,25 +366,27 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY }: VaultEditProps) {
       <div className="space-y-5">
         <CryptoResult payload={phase.payload} />
         <TransparencyPanel payload={phase.payload} />
-        {phase.savedTxId ? (
-          <div className="space-y-2">
-            <p className="text-sm text-green-400 font-mono">{t("saveSuccess")}</p>
-            <p className="font-mono text-xs text-zinc-500 break-all">TxID: {phase.savedTxId}</p>
-            <button
-              type="button"
-              onClick={() => setPhase({ step: "idle" })}
-              className="text-xs text-green-400/70 hover:text-green-400 font-mono transition-colors"
-            >
-              ← {t("back")}
-            </button>
-          </div>
-        ) : (
-          <VaultSave
-            payload={phase.payload}
-            vaultKey={vaultKey}
-            onSaved={(txId) => setPhase((prev) => prev.step === "saving" ? { ...prev, savedTxId: txId } : prev)}
-          />
-        )}
+        <VaultSave
+          payload={phase.payload}
+          vaultKey={vaultKey}
+          mode="edit"
+          userPlan={userPlan}
+          initialPingConfig={phase.pingConfig}
+          onBack={() =>
+            setPhase({
+              step: "editing",
+              vault: phase.vault,
+              pingConfig: phase.pingConfig,
+              initialEntries: phase.draftEntries,
+              initialSelections: phase.draftSelections,
+              initialLanguage: phase.draftLanguage,
+            })
+          }
+          onDone={() => {
+            setPhase({ step: "idle" });
+            onSaved?.();
+          }}
+        />
       </div>
     );
   }

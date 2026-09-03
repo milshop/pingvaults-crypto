@@ -150,8 +150,8 @@
   <header>
     <div style="font-size:2rem;margin-bottom:8px;">🧊</div>
     <h1>PingVaults 离线解密器</h1>
-    <p>完全在浏览器本地运行 · 无任何网络请求 · 答案不离开此页面</p>
-    <span class="badge">Zero-Knowledge · AES-256-GCM · PBKDF2</span>
+    <p>在页面内解密 · 只有选择 TxID 取回时才联网 · 恢复值留在此页面</p>
+    <span class="badge">客户端解密 · AES-256-GCM · PBKDF2</span>
   </header>
 
   <!-- 第一步 -->
@@ -163,7 +163,7 @@
     </div>
     <div id="txid-input">
       <div class="field">
-        <label>Arweave TxID（在链上永久存储的地址）</label>
+        <label>Arweave 交易 ID（持久密文引用）</label>
         <input id="txid" type="text" placeholder="例如：Dld7RnIBOSKXKF8q9eMbFHm3P3cB..." />
       </div>
       <button class="btn btn-secondary" onclick="fetchCiphertext()" id="fetch-btn">
@@ -207,7 +207,7 @@
 
   <!-- 第三步 -->
   <div class="card">
-    <div class="card-title">第三步：密语答案</div>
+    <div class="card-title">第三步：恢复输入</div>
     <div id="schema-hint-area"></div>
     <div id="key-entries"></div>
     <button class="btn btn-secondary" onclick="addKeyEntry()" style="margin-top:10px;">
@@ -233,9 +233,9 @@
   </div>
 
   <p class="privacy-note">
-    此工具完全在浏览器本地运行，使用 Web Crypto API（<span>AES-256-GCM + PBKDF2</span>）。<br>
-    所有运算均在你的设备上完成，答案和明文永远不会离开此页面。<br>
-    你可以断网后打开此文件，完全离线使用。
+    解密在此页面内通过 Web Crypto API 完成（<span>AES-256-GCM + PBKDF2</span>）。<br>
+    导入已导出的密文并先断网，可走完全离线路径。<br>
+    使用 TxID 下载会联系 Irys 或 Arweave 网关；请求不包含恢复值或解密后的明文。
   </p>
 </div>
 
@@ -244,13 +244,13 @@ const KEY_TYPE_LABELS = {
   name: "姓名",
   id_last_4: "证件号后 4 位",
   phone_last_4: "手机号后 4 位",
-  custom_question: "自定义问题",
+  custom_question: "恢复提示",
 };
 const KEY_TYPE_OPTIONS = {
   name: "姓名（必选）",
   id_last_4: "证件号后 4 位",
   phone_last_4: "手机号后 4 位",
-  custom_question: "自定义问题（必选）",
+  custom_question: "恢复提示（必选）",
 };
 const REQUIRED_TYPES = new Set(["name", "custom_question"]);
 let keyEntryCount = 0;
@@ -283,12 +283,12 @@ function addKeyEntry(typeVal, question, answer) {
       </select>
     </div>
     <div class="field" id="question-field-${id}" style="margin-bottom:8px;display:${isCustom?'block':'none'}">
-      <label>问题题面（提示用）</label>
-      <input id="key-question-${id}" type="text" value="${esc(question||'')}" placeholder="例如：我出生时所在的医院叫什么名字？" />
+      <label>恢复提示（可见元数据）</label>
+      <input id="key-question-${id}" type="text" value="${esc(question||'')}" placeholder="例如：请输入密封恢复卡上的短语" />
     </div>
     <div class="field">
-      <label style="color:#f59e0b;">答案（仅本地使用，不会发送）</label>
-      <input id="key-answer-${id}" type="password" value="${esc(answer||'')}" placeholder="输入答案..." autocomplete="off" />
+      <label style="color:#f59e0b;">恢复值（仅本地使用，不会发送）</label>
+      <input id="key-answer-${id}" type="password" value="${esc(answer||'')}" placeholder="输入唯一恢复短语或所需值..." autocomplete="off" />
     </div>
     <button onclick="removeKeyEntry(${id})" id="remove-btn-${id}"
       style="background:none;border:none;color:#666;font-size:0.75rem;cursor:pointer;margin-top:4px;
