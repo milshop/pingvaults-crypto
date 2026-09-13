@@ -1,11 +1,14 @@
 /**
  * GET /api/vault/fetch
- * GET /api/vault/fetch?txId=xxx  （直接从 Arweave 下载，用于离线/紧急联系人场景）
+ * GET /api/vault/fetch?txId=xxx (public ciphertext only; recovery answers are never accepted)
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getVaultByEmail } from "@/lib/dynamodb";
 import { getSessionFromRequest } from "@/lib/session";
-import { fetchFromArweave } from "@/lib/irys";
+import { fetchCiphertext } from "@/lib/storage-fetch";
+import { isStorageTxId } from "@/lib/storage-status";
+
+const headers = { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" };
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,43 +16,50 @@ export async function GET(request: NextRequest) {
     const txIdParam = searchParams.get("txId");
 
     // 直接 TxID 模式（紧急联系人 / 离线解密）
-    if (txIdParam) {
-      const res = await fetchFromArweave(txIdParam);
+    if (txIdParam !== null) {
+      if (!isStorageTxId(txIdParam)) return NextResponse.json({ error: "Invalid txId" }, { status: 400, headers });
+      const result = await fetchCiphertext(txIdParam, { signal: request.signal });
       return NextResponse.json({
-        ciphertext: await res.text(),
+        ciphertext: result.ciphertext,
         tx_id: txIdParam,
+        storage_url: result.url,
+        arweave_url: result.url, // Legacy field retained for existing clients.
+        gateway: result.gateway,
         source: "arweave_direct",
-      });
+      }, { headers });
     }
 
     // 已登录模式：从 DynamoDB 读取元数据
     const session = await getSessionFromRequest(request);
     if (!session) {
-      return NextResponse.json({ error: "未登录" }, { status: 401 });
+      return NextResponse.json({ error: "未登录" }, { status: 401, headers });
     }
 
     const vault = await getVaultByEmail(session.email);
     if (!vault || !vault.arweave_txid) {
-      return NextResponse.json({ error: "未找到金库记录" }, { status: 404 });
+      return NextResponse.json({ error: "未找到金库记录" }, { status: 404, headers });
     }
 
-    // 从 Arweave 下载密文（自动多网关降级）
-    const arweaveRes = await fetchFromArweave(vault.arweave_txid);
+    // Historical column names are retained; they do not prove a storage network.
+    const result = await fetchCiphertext(vault.arweave_txid, { signal: request.signal });
 
     return NextResponse.json({
-      ciphertext: await arweaveRes.text(),
+      ciphertext: result.ciphertext,
       salt: vault.crypto_salt,
       iv: vault.crypto_iv,
       key_schema: vault.key_schema ?? [],
       key_language: vault.key_language ?? "zh",
       tx_id: vault.arweave_txid,
+      storage_url: result.url,
+      arweave_url: result.url,
+      gateway: result.gateway,
       source: "dynamodb",
-    });
+    }, { headers });
   } catch (err) {
-    console.error("[/api/vault/fetch]", err);
+    console.error("[/api/vault/fetch] retrieval failed", err instanceof Error ? err.name : "UnknownError");
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "服务器内部错误" },
-      { status: 500 }
+      { error: "Ciphertext retrieval is unavailable. Retry or import your exported JSON in the offline decryptor." },
+      { status: 502, headers }
     );
   }
 }

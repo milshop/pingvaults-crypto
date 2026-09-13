@@ -158,16 +158,16 @@
   <div class="card">
     <div class="card-title">Step 1 — Ciphertext Source</div>
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('txid',event)">Enter Arweave TxID</button>
+      <button class="tab active" onclick="switchTab('txid',event)">Enter storage TxID</button>
       <button class="tab" onclick="switchTab('paste',event)">Paste Ciphertext</button>
     </div>
     <div id="txid-input">
       <div class="field">
-        <label>Arweave transaction ID (persistent ciphertext reference)</label>
+        <label>Storage transaction ID (Irys or legacy Arweave)</label>
         <input id="txid" type="text" placeholder="e.g. Dld7RnIBOSKXKF8q9eMbFHm3P3cB..." />
       </div>
       <button class="btn btn-secondary" onclick="fetchCiphertext()" id="fetch-btn">
-        Download ciphertext from Arweave
+        Download ciphertext from storage
       </button>
       <div id="fetch-status"></div>
     </div>
@@ -328,25 +328,30 @@ function switchTab(tab,e) {
 
 async function fetchCiphertext() {
   const txid = document.getElementById('txid').value.trim();
-  if (!txid) return;
+  if (!/^[a-zA-Z0-9_-]{43,44}$/.test(txid)) {
+    document.getElementById('fetch-status').textContent = 'Invalid storage TxID';
+    return;
+  }
   const btn = document.getElementById('fetch-btn');
   const status = document.getElementById('fetch-status');
   btn.disabled = true;
   btn.innerHTML = '<span class="loading-spinner"></span> Downloading...';
   status.innerHTML = '';
-  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`]) {
+  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`,`https://ar-io.dev/${txid}`]) {
     try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      document.getElementById('ciphertext-raw').value = await res.text();
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      if (!res.ok) { await res.body?.cancel(); continue; }
+      const ciphertext = (await res.text()).trim();
+      if (ciphertext.length < 24 || ciphertext.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(ciphertext)) continue;
+      document.getElementById('ciphertext-raw').value = ciphertext;
       document.getElementById('txid-input').style.display = 'none';
       document.getElementById('ciphertext-input').style.display = 'block';
       document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===1));
-      btn.disabled = false; btn.textContent = 'Download ciphertext from Arweave'; return;
+      btn.disabled = false; btn.textContent = 'Download ciphertext from storage'; return;
     } catch {}
   }
   status.innerHTML = '<div class="error-box">Download failed. Check TxID or network, or paste ciphertext manually.</div>';
-  btn.disabled = false; btn.textContent = 'Download ciphertext from Arweave';
+  btn.disabled = false; btn.textContent = 'Download ciphertext from storage';
 }
 
 function importMeta() {

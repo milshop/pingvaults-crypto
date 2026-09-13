@@ -16,6 +16,7 @@ import {
 import type { LocalVaultMeta } from "@/components/VaultSave";
 import type { KeySchemaItemSafe } from "@/components/VaultForm";
 import { ArweaveSyncStatus } from "@/components/ArweaveSyncStatus";
+import { isCiphertext } from "@/lib/storage-fetch";
 
 const DEFAULT_VAULT_KEY = "pv_last_vault";
 
@@ -162,7 +163,7 @@ interface FetchedVault {
   tx_id: string;
   arweave_url: string;
   updated_at?: string;
-  source: "dynamodb" | "arweave_direct";
+  source: "dynamodb" | "arweave_direct" | "local_backup";
 }
 
 // ─── VaultFetch main component ────────────────────────────
@@ -196,25 +197,36 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
 
       if (localRaw) {
         const local: LocalVaultMeta = JSON.parse(localRaw);
-        const arweaveRes = await fetch(`/api/vault/fetch?txId=${local.txId}`);
-        const arweaveData = await arweaveRes.json();
-        if (!arweaveRes.ok) throw new Error(arweaveData.error ?? "Arweave download failed");
+        let ciphertext: string;
+        let url = "";
+        let source: FetchedVault["source"] = "arweave_direct";
+        try {
+          const response = await fetch(`/api/vault/fetch?txId=${encodeURIComponent(local.txId)}`, { signal: AbortSignal.timeout(28000), cache: "no-store" });
+          const data = await response.json();
+          if (!response.ok || !isCiphertext(data.ciphertext)) throw new Error(data.error ?? "Ciphertext download failed");
+          ciphertext = data.ciphertext;
+          url = data.storage_url ?? data.arweave_url;
+        } catch (error) {
+          if (!isCiphertext(local.ciphertext)) throw error;
+          ciphertext = local.ciphertext;
+          source = "local_backup";
+        }
 
         setVault({
-          ciphertext: arweaveData.ciphertext,
+          ciphertext,
           salt: local.salt,
           iv: local.iv,
           keySchema: local.keySchema,
           keyLanguage: local.keyLanguage,
           tx_id: local.txId,
-          arweave_url: arweaveData.arweave_url,
-          source: "arweave_direct",
+          arweave_url: url,
+          source,
         });
         setAnswers(local.keySchema.map(() => ""));
         return;
       }
 
-      const res = await fetch("/api/vault/fetch");
+      const res = await fetch("/api/vault/fetch", { signal: AbortSignal.timeout(30000), cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? t("notFoundError"));
 
@@ -295,7 +307,7 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
           <div className="rounded-xl border border-border bg-muted/5 p-3 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className="text-xs">
-                {vault.source === "dynamodb" ? "DynamoDB + Arweave" : "Arweave Direct"}
+                {t(vault.source === "dynamodb" ? "accountSource" : vault.source === "local_backup" ? "localSource" : "gatewaySource")}
               </Badge>
               {vault.updated_at && (
                 <span className="text-xs text-muted-foreground">
@@ -308,15 +320,16 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
               <p className="font-mono text-xs text-emerald-600 break-all leading-relaxed">
                 {vault.tx_id}
               </p>
-              <a
-                href={`https://gateway.irys.xyz/${vault.tx_id}`}
+              {vault.arweave_url && <a
+                href={vault.arweave_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-blue-600 hover:underline"
               >
-                gateway.irys.xyz ↗
-              </a>
+                {new URL(vault.arweave_url).hostname} ↗
+              </a>}
             </div>
+            {vault.source === "local_backup" && <p className="text-xs text-amber-700">{t("localBackupWarning")}</p>}
             <ArweaveSyncStatus txId={vault.tx_id} />
           </div>
 

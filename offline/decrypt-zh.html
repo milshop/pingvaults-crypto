@@ -158,16 +158,16 @@
   <div class="card">
     <div class="card-title">第一步：密文来源</div>
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('txid',event)">输入 Arweave TxID</button>
+      <button class="tab active" onclick="switchTab('txid',event)">输入 存储 TxID</button>
       <button class="tab" onclick="switchTab('paste',event)">直接粘贴密文</button>
     </div>
     <div id="txid-input">
       <div class="field">
-        <label>Arweave 交易 ID（持久密文引用）</label>
+        <label>存储交易 ID（Irys 或历史 Arweave）</label>
         <input id="txid" type="text" placeholder="例如：Dld7RnIBOSKXKF8q9eMbFHm3P3cB..." />
       </div>
       <button class="btn btn-secondary" onclick="fetchCiphertext()" id="fetch-btn">
-        从 Arweave 下载密文
+        从存储网关下载密文
       </button>
       <div id="fetch-status"></div>
     </div>
@@ -328,25 +328,30 @@ function switchTab(tab,e) {
 
 async function fetchCiphertext() {
   const txid = document.getElementById('txid').value.trim();
-  if (!txid) return;
+  if (!/^[a-zA-Z0-9_-]{43,44}$/.test(txid)) {
+    document.getElementById('fetch-status').textContent = '存储 TxID 格式不正确';
+    return;
+  }
   const btn = document.getElementById('fetch-btn');
   const status = document.getElementById('fetch-status');
   btn.disabled = true;
   btn.innerHTML = '<span class="loading-spinner"></span> 下载中...';
   status.innerHTML = '';
-  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`]) {
+  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`,`https://ar-io.dev/${txid}`]) {
     try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      document.getElementById('ciphertext-raw').value = await res.text();
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      if (!res.ok) { await res.body?.cancel(); continue; }
+      const ciphertext = (await res.text()).trim();
+      if (ciphertext.length < 24 || ciphertext.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(ciphertext)) continue;
+      document.getElementById('ciphertext-raw').value = ciphertext;
       document.getElementById('txid-input').style.display = 'none';
       document.getElementById('ciphertext-input').style.display = 'block';
       document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===1));
-      btn.disabled = false; btn.textContent = '从 Arweave 下载密文'; return;
+      btn.disabled = false; btn.textContent = '从存储网关下载密文'; return;
     } catch {}
   }
   status.innerHTML = '<div class="error-box">下载失败，请检查 TxID 或网络连接，也可手动粘贴密文。</div>';
-  btn.disabled = false; btn.textContent = '从 Arweave 下载密文';
+  btn.disabled = false; btn.textContent = '从存储网关下载密文';
 }
 
 function importMeta() {

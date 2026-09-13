@@ -111,9 +111,9 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY, userPlan = "free", onS
 
       if (localRaw) {
         const local: LocalVaultMeta = JSON.parse(localRaw);
-        const res  = await fetch(`/api/vault/fetch?txId=${local.txId}`);
+        const res  = await fetch(`/api/vault/fetch?txId=${encodeURIComponent(local.txId)}`, { cache: "no-store", signal: AbortSignal.timeout(28000) });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Arweave fetch failed");
+        if (!res.ok) throw new Error(data.error ?? "Ciphertext retrieval failed");
         vault = {
           ciphertext:  data.ciphertext,
           salt:        local.salt,
@@ -124,7 +124,7 @@ export function VaultEdit({ vaultKey = DEFAULT_VAULT_KEY, userPlan = "free", onS
           arweave_url: data.arweave_url,
         };
       } else {
-        const res  = await fetch("/api/vault/fetch");
+        const res  = await fetch("/api/vault/fetch", { cache: "no-store", signal: AbortSignal.timeout(30000) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? t("notFoundError"));
         vault = {

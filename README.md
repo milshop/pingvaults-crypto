@@ -27,8 +27,8 @@ src/
   crypto.ts                        ← Encryption core (PBKDF2 + AES-256-GCM)
 components/
   VaultForm.tsx                    ← User input UI + triggers encryption
-  VaultFetch.tsx                   ← Fetch ciphertext from Arweave + triggers decryption
-  VaultSave.tsx                    ← Uploads ciphertext to Arweave, writes metadata to DB
+  VaultFetch.tsx                   ← Fetch ciphertext from gateways/local backup + triggers decryption
+  VaultSave.tsx                    ← Uploads ciphertext through Irys, writes metadata to DB
   VaultEdit.tsx                    ← Decrypt → edit → re-encrypt flow
 app/api/vault/
   save/route.ts                    ← Server: validation for the intended ciphertext-only save payload
@@ -45,6 +45,13 @@ offline/
 The server-side API routes (`save`, `fetch`) are particularly important for auditing:
 - `save/route.ts` shows what the intended save endpoint accepts and stores
 - `fetch/route.ts` shows what the server returns — no decryption happens server-side
+
+Storage evidence is also published in `components/ArweaveSyncStatus.tsx`,
+`app/api/arweave/status/route.ts`, and `lib/storage-{status,fetch}.ts`.
+The legacy Arweave-named fields and endpoint remain for compatibility. New uploads
+use Irys; upload records, gateway availability and Arweave block inclusion are
+different observations. There is no automatic Arweave migration or settlement ETA.
+Offline exports remain essential; a gateway response does not verify decryption.
 
 ---
 

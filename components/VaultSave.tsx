@@ -59,7 +59,7 @@ export function VaultSave({
   const decryptorHref = locale === "zh" ? "/decrypt-zh.html" : "/decrypt.html";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ txId: string; dbSaved: boolean; note?: string } | null>(null);
+  const [result, setResult] = useState<{ txId: string; dbSaved: boolean; note?: string; meta: LocalVaultMeta; localSaved: boolean } | null>(null);
   const [pingEnabled, setPingEnabled] = useState(Boolean(initialPingConfig?.emergencyEmail));
   const [pingConfig, setPingConfig] = useState<PingConfigData>(initialPingConfig ?? PING_CONFIG_DEFAULTS);
   const [drillPassedAt, setDrillPassedAt] = useState<string | null>(null);
@@ -117,9 +117,11 @@ export function VaultSave({
         savedAt: new Date().toISOString(),
         ciphertext: payload.ciphertext,
       };
-      localStorage.setItem(vaultKey, JSON.stringify(meta));
-
-      setResult({ txId: data.tx_id, dbSaved: data.db_saved, note: data.note });
+      let localSaved = true;
+      try { localStorage.setItem(vaultKey, JSON.stringify(meta)); }
+      catch { localSaved = false; }
+      // A full/disabled browser store must not hide a successful upload or prevent export.
+      setResult({ txId: data.tx_id, dbSaved: data.db_saved, note: data.note, meta, localSaved });
       trackEvent("Vault Saved", {
         locale,
         plan: userPlan,
@@ -140,8 +142,8 @@ export function VaultSave({
   }
 
   function exportMeta() {
-    const raw = localStorage.getItem(vaultKey);
-    if (!raw) return;
+    if (!result) return;
+    const raw = JSON.stringify(result.meta);
     const blob = new Blob([raw], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -153,9 +155,10 @@ export function VaultSave({
   }
 
   if (result) {
-    const savedAt = new Date().toLocaleString();
+    const savedAt = new Date(result.meta.savedAt).toLocaleString();
     return (
       <div className="space-y-5">
+        {!result.localSaved && <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{t("localStorageWarning")}</p>}
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 md:p-5 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
