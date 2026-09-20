@@ -9,6 +9,8 @@ import { getVaultByEmail, putVault, updateVault, removePingConfig, getUserPlan }
 import { getSessionFromRequest } from "@/lib/session";
 import { getPlanLimits } from "@/lib/plans";
 import { randomUUID } from "crypto";
+import { readBoundedJson, RequestPolicyError } from "@/lib/request-policy";
+import { MAX_VAULT_REQUEST_BYTES, validateVaultInput } from "@/lib/vault-input";
 
 const DEFAULT_INITIAL_DAYS  = 30;   // days before first ping
 const DEFAULT_INTERVAL_DAYS = 7;    // days between subsequent pings
@@ -21,6 +23,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const body = await readBoundedJson(request, MAX_VAULT_REQUEST_BYTES);
+    const planRecord = await getUserPlan(session.email);
+    const userPlan = planRecord?.user_plan ?? "free";
+    const limits = getPlanLimits(userPlan);
     const {
       ciphertext,
       salt,
@@ -33,16 +39,7 @@ export async function POST(request: NextRequest) {
       ping_initial_days,
       ping_interval_days,
       ping_max_count,
-    } = await request.json();
-
-    if (!ciphertext || !salt || !iv || !Array.isArray(key_schema) || !key_language) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    // ── Plan enforcement ────────────────────────────────
-    const planRecord = await getUserPlan(session.email);
-    const userPlan = planRecord?.user_plan ?? "free";
-    const limits = getPlanLimits(userPlan);
+    } = validateVaultInput(body, userPlan);
 
     // Free tier: reject backup email
     if (!limits.backupEmail && backup_email) {
@@ -74,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
     const nextPingAt   = hasPing ? now + initialDays! * 24 * 60 * 60 * 1000 : undefined;
 
-    // Upload ciphertext to Irys / Arweave
+    // Upload validated, bounded ciphertext to Irys (not proof of Arweave inclusion).
     const irys = await getIrysUploader();
 
     // Auto-fund from wallet if Irys balance is insufficient
@@ -152,9 +149,10 @@ export async function POST(request: NextRequest) {
       next_ping_at: nextPingAt ?? null,
     });
   } catch (err) {
-    console.error("[/api/vault/save]", err);
+    if (err instanceof RequestPolicyError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error("[/api/vault/save] failed", err instanceof Error ? err.name : "UnknownError");
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
+      { error: "Vault save failed. Keep your local encrypted backup and check the vault before retrying." },
       { status: 500 }
     );
   }

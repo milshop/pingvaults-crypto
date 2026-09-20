@@ -7,10 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getVaultByEmail, updateVault } from "@/lib/dynamodb";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "dev-secret-change-in-production"
-);
+import { sessionSecret } from "@/lib/auth-policy";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -21,7 +18,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, sessionSecret(), { algorithms: ["HS256"] });
 
     if (payload.type !== "ping-reset" || typeof payload.email !== "string") {
       return htmlResponse("❌ Invalid Token", "This link is not a valid ping reset link.", false);

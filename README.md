@@ -103,6 +103,20 @@ This describes the published code path, not a cryptographic attestation of the c
 
 ## Running tests
 
+### Review status (2026-09-20)
+
+A scoped internal AI-assisted code review was performed with OpenAI Codex for
+PingVaults. It is not an independent audit, penetration test or security
+certification. The dated scope and open limitations are published at
+[Security transparency](https://www.pingvaults.com/en/security#review).
+
+The September snapshot also publishes `lib/auth-policy.ts`,
+`lib/request-policy.ts`, `lib/vault-input.ts` and `lib/plans.ts` so the
+validation used by the save and reset routes can be inspected. These snapshots
+are not a standalone deployable backend; database and service integrations
+remain in the private application. The crypto test suite below does not
+certify login, cloud permissions, billing, email delivery or provider storage.
+
 ```bash
 npm install
 npm test
