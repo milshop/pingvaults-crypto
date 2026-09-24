@@ -27,6 +27,13 @@ const copy = {
   },
 };
 
+// Once the network is known, list only gateways that returned the ciphertext.
+function shownGateways(data: StorageStatus) {
+  if (data.network === "unknown") return data.gateways;
+  const found = data.gateways.filter(({ state }) => state === "found");
+  return found.length ? found : data.gateways.filter(({ url }) => url.includes("irys") === (data.network === "irys"));
+}
+
 // A new TxID mounts fresh state and aborts the previous request.
 export function ArweaveSyncStatus({ txId }: { txId: string }) {
   return <StorageStatusPanel key={txId} txId={txId} />;
@@ -49,7 +56,7 @@ function StorageStatusPanel({ txId }: { txId: string }) {
         });
         if (!res.ok) throw new Error("Status unavailable");
         const next = await res.json();
-        if (next.version !== 3 || next.txId !== txId || !["arweave", "irys", "unknown"].includes(next.network) || !next.arweave || !next.irys || !Array.isArray(next.gateways)) throw new Error("Invalid status response");
+        if (next.version !== 3 || next.txId !== txId || !["arweave", "irys", "unknown"].includes(next.network) || !next.arweave || !next.turbo || !next.irys || !Array.isArray(next.gateways)) throw new Error("Invalid status response");
         if (active) { setData(next); setError(false); }
       } catch { if (active) setError(true); }
       finally { if (active) setLoading(false); }
@@ -80,7 +87,7 @@ function StorageStatusPanel({ txId }: { txId: string }) {
           </>}
         </>}
         <ul className="space-y-1">
-          {data.gateways.filter(({ url, state }) => data.network === "unknown" || state === "found" || (data.network === "arweave" && !url.includes("irys")) || (data.network === "irys" && url.includes("irys"))).map(({ url, state }) => <li key={url}>
+          {shownGateways(data).map(({ url, state }) => <li key={url}>
             <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{new URL(url).hostname} ↗</a>
             <span className={state === "found" ? "text-emerald-700" : "text-gray-500"}> — {state === "found" ? t.available : state === "not_found" ? t.missing : t.unknown}</span>
           </li>)}

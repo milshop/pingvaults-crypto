@@ -18,6 +18,8 @@ export interface StorageStatus {
   checkedAt: string;
   network: StorageNetwork;
   arweave: { state: ObservationState | "not_applicable"; blockHeight: number | null; blockTimestamp: number | null };
+  /** Turbo (Arweave upload service) receipt: accepted for Arweave, not yet proof of a block. */
+  turbo: { state: ObservationState | "not_applicable"; status: string | null };
   irys: { state: ObservationState; uploadedAt: number | null };
   gateways: { url: string; state: ObservationState }[];
 }
@@ -51,16 +53,28 @@ async function indexLookup(url: string, txId: string, fields: string, fetcher: t
     return { state: "found" as const, node };
   } catch { return { state: "error" as const, node: null }; }
 }
+async function turboLookup(txId: string, fetcher: typeof fetch, signal?: AbortSignal, timeoutMs?: number) {
+  try {
+    const res = await fetcher(`https://upload.ardrive.io/v1/tx/${txId}/status`, { cache: "no-store", signal: probeSignal(signal, timeoutMs) });
+    if (res.status === 404) { await res.body?.cancel(); return { state: "not_found" as const, status: null }; }
+    if (!res.ok) throw new Error("Turbo status unavailable");
+    const json = await res.json();
+    const status = typeof json?.status === "string" && /^[A-Z_]{1,32}$/.test(json.status) ? json.status : null;
+    if (!status) throw new Error("Invalid Turbo status");
+    return { state: "found" as const, status };
+  } catch { return { state: "error" as const, status: null }; }
+}
 export async function getStorageStatus(txId: string, options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; now?: () => number } = {}): Promise<StorageStatus> {
   if (!isStorageTxId(txId)) throw new Error("Invalid txId");
   const { fetcher = fetch, signal, timeoutMs, now = Date.now } = options;
   const arweaveShape = couldBeArweaveTxId(txId);
   // Only probe Arweave for IDs Arweave could have issued; a 44-char Irys L1 ID is rejected there.
   const gatewaysToProbe = arweaveShape ? STORAGE_GATEWAYS : STORAGE_GATEWAYS.filter((gateway) => gateway === "https://gateway.irys.xyz");
-  const [arweave, irys, gateways] = await Promise.all([
+  const [arweave, turbo, irys, gateways] = await Promise.all([
     arweaveShape
       ? indexLookup("https://arweave.net/graphql", txId, "block { height timestamp }", fetcher, signal, timeoutMs)
       : Promise.resolve({ state: "not_applicable" as const, node: null }),
+    arweaveShape ? turboLookup(txId, fetcher, signal, timeoutMs) : Promise.resolve({ state: "not_applicable" as const, status: null }),
     indexLookup("https://uploader.irys.xyz/graphql", txId, "timestamp receipt { timestamp }", fetcher, signal, timeoutMs),
     Promise.all(gatewaysToProbe.map(async (gateway) => {
       const url = `${gateway}/${txId}`;
@@ -72,13 +86,14 @@ export async function getStorageStatus(txId: string, options: { fetcher?: typeof
     })),
   ]);
   const timestamp = positiveNumber(irys.node?.receipt?.timestamp) ?? positiveNumber(irys.node?.timestamp);
-  // An Arweave index record wins; an Irys record with no Arweave record means Irys L1 storage.
-  const network: StorageNetwork = arweave.state === "found" ? "arweave"
+  // An Arweave index record or Turbo receipt wins; an Irys record with no Arweave record means Irys L1 storage.
+  const network: StorageNetwork = arweave.state === "found" || turbo.state === "found" ? "arweave"
     : irys.state === "found" && (arweave.state === "not_found" || arweave.state === "not_applicable") ? "irys"
     : "unknown";
   return {
     version: 3, txId, checkedAt: new Date(now()).toISOString(), network,
     arweave: { state: arweave.state, blockHeight: positiveNumber(arweave.node?.block?.height), blockTimestamp: positiveNumber(arweave.node?.block?.timestamp) },
+    turbo: { state: turbo.state, status: turbo.status },
     irys: { state: irys.state, uploadedAt: timestamp !== null && timestamp <= now() ? timestamp : null }, gateways,
   };
 }

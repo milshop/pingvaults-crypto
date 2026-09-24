@@ -53,6 +53,11 @@ use Irys L1. The status check reports which network the evidence points to
 (`arweave`, `irys` or `unknown`): a 44-character ID can only be an Irys L1 ID, so
 Arweave is not queried for it, and an Irys record with no Arweave record is shown as
 Irys L1 storage rather than as missing Arweave inclusion. `unknown` never means lost.
+`lib/turbo.ts` signs an ANS-104 data item on the server and posts it to the
+ArDrive Turbo upload service, which writes it to Arweave. It is used when the
+deployment sets `STORAGE_BACKEND=turbo`; the returned ID is only accepted if it
+matches the ID derived from the item's own signature. A Turbo receipt is shown as
+"received by Arweave, waiting for a block" until the Arweave index reports a block.
 Offline exports remain essential; a gateway response does not verify decryption.
 
 ---

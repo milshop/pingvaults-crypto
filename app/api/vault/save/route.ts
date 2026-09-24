@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getIrysUploader, ARWEAVE_GATEWAY } from "@/lib/irys";
+import { uploadToTurbo } from "@/lib/turbo";
 import { getVaultByEmail, putVault, updateVault, removePingConfig, getUserPlan } from "@/lib/dynamodb";
 import { getSessionFromRequest } from "@/lib/session";
 import { getPlanLimits } from "@/lib/plans";
@@ -71,25 +72,30 @@ export async function POST(request: NextRequest) {
     }
     const nextPingAt   = hasPing ? now + initialDays! * 24 * 60 * 60 * 1000 : undefined;
 
-    // Upload validated, bounded ciphertext to Irys (not proof of Arweave inclusion).
-    const irys = await getIrysUploader();
+    // Upload validated, bounded ciphertext. STORAGE_BACKEND=turbo writes to Arweave via
+    // ArDrive Turbo; otherwise Irys L1 (not Arweave). Neither receipt is proof of a block.
+    const tags = [
+      { name: "App-Name", value: "PingVaults" },
+      { name: "Content-Type", value: "application/octet-stream" },
+    ];
+    let txId: string;
+    if (process.env.STORAGE_BACKEND === "turbo") {
+      txId = (await uploadToTurbo(ciphertext, tags)).id;
+    } else {
+      const irys = await getIrysUploader();
 
-    // Auto-fund from wallet if Irys balance is insufficient
-    const dataSize = Buffer.byteLength(ciphertext, "utf8");
-    const price   = await irys.getPrice(dataSize);
-    const balance = await irys.getLoadedBalance();
+      // Auto-fund from wallet if Irys balance is insufficient
+      const dataSize = Buffer.byteLength(ciphertext, "utf8");
+      const price   = await irys.getPrice(dataSize);
+      const balance = await irys.getLoadedBalance();
 
-    if (balance.lt(price)) {
-      await irys.fund(price);
+      if (balance.lt(price)) {
+        await irys.fund(price);
+      }
+
+      const receipt = await irys.upload(ciphertext, { tags });
+      txId = receipt.id;
     }
-
-    const receipt = await irys.upload(ciphertext, {
-      tags: [
-        { name: "App-Name", value: "PingVaults" },
-        { name: "Content-Type", value: "application/octet-stream" },
-      ],
-    });
-    const txId = receipt.id;
 
     // Persist to DynamoDB (no plaintext, no answers)
     const existing = await getVaultByEmail(session.email);
@@ -144,7 +150,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       tx_id: txId,
-      arweave_url: `${ARWEAVE_GATEWAY}/${txId}`,
+      arweave_url: process.env.STORAGE_BACKEND === "turbo" ? `https://ar-io.dev/${txId}` : `${ARWEAVE_GATEWAY}/${txId}`,
       db_saved: true,
       next_ping_at: nextPingAt ?? null,
     });
