@@ -16,6 +16,7 @@ import {
 } from "@/components/PingConfig";
 import type { PingConfigData } from "@/components/PingConfig";
 import { ArweaveSyncStatus } from "@/components/ArweaveSyncStatus";
+import { RecoveryCard } from "@/components/RecoveryCard";
 import type { UserPlan } from "@/lib/plans";
 import { trackEvent } from "@/lib/analytics";
 
@@ -195,7 +196,7 @@ export function VaultSave({
               <p className="font-mono text-xs text-emerald-600 break-all leading-relaxed">{result.txId}</p>
               <div className="flex flex-wrap gap-3 text-xs">
                 <a
-                  href={`https://gateway.irys.xyz/${result.txId}`}
+                  href={result.txId.length === 44 ? `https://gateway.irys.xyz/${result.txId}` : `https://turbo-gateway.com/${result.txId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:underline"
@@ -228,6 +229,8 @@ export function VaultSave({
             </div>
           </div>
         </div>
+
+        <RecoveryCard data={result.meta} />
 
         <DryRunVerifier
           payload={payload}

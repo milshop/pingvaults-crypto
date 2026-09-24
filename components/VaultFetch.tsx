@@ -16,6 +16,7 @@ import {
 import type { LocalVaultMeta } from "@/components/VaultSave";
 import type { KeySchemaItemSafe } from "@/components/VaultForm";
 import { ArweaveSyncStatus } from "@/components/ArweaveSyncStatus";
+import { RecoveryCard } from "@/components/RecoveryCard";
 import { isCiphertext } from "@/lib/storage-fetch";
 
 const DEFAULT_VAULT_KEY = "pv_last_vault";
@@ -332,6 +333,10 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
             {vault.source === "local_backup" && <p className="text-xs text-amber-700">{t("localBackupWarning")}</p>}
             <ArweaveSyncStatus txId={vault.tx_id} />
           </div>
+
+          {vault.salt && vault.iv && vault.keySchema.length > 0 && (
+            <RecoveryCard compact data={{ txId: vault.tx_id, salt: vault.salt, iv: vault.iv, keySchema: vault.keySchema, keyLanguage: vault.keyLanguage }} />
+          )}
 
           {/* Passphrase arrangement hint */}
           {vault.keySchema.length > 0 && (

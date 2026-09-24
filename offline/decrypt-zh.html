@@ -154,6 +154,19 @@
     <span class="badge">客户端解密 · AES-256-GCM · PBKDF2</span>
   </header>
 
+  <!-- 恢复卡 -->
+  <div class="card" style="border-color:#22c55e55;">
+    <div class="card-title">有恢复卡？从这里开始</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:10px;">
+      用手机扫描恢复卡上的二维码，把得到的文字粘贴到下面；扫不了码也可以照着卡片手动输入。导入后会自动从 Arweave 下载加密的金库。
+    </p>
+    <div class="field">
+      <textarea id="card-import" rows="3" placeholder='{"v":1,"txId":"...","salt":"...","iv":"...","keySchema":[...],"keyLanguage":"zh"}'></textarea>
+    </div>
+    <button class="btn btn-secondary" onclick="importCard()">导入恢复卡</button>
+    <div id="card-status"></div>
+  </div>
+
   <!-- 第一步 -->
   <div class="card">
     <div class="card-title">第一步：密文来源</div>
@@ -354,10 +367,10 @@ async function fetchCiphertext() {
   btn.disabled = false; btn.textContent = '从存储网关下载密文';
 }
 
-function importMeta() {
-  const status = document.getElementById('import-status');
+function importMeta(sourceId = 'meta-import', statusId = 'import-status') {
+  const status = document.getElementById(statusId);
   try {
-    const meta = JSON.parse(document.getElementById('meta-import').value.trim());
+    const meta = JSON.parse(document.getElementById(sourceId).value.trim());
     if (meta.salt) document.getElementById('salt').value = meta.salt;
     if (meta.iv) document.getElementById('iv').value = meta.iv;
     if (meta.keyLanguage) document.getElementById('language').value = meta.keyLanguage;
@@ -378,9 +391,25 @@ function importMeta() {
     } else {
       status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">✓ 导入成功，请填写密语答案后解密</p>';
     }
+    return meta;
   } catch {
     status.innerHTML = '<div class="error-box">JSON 格式错误，请检查元数据</div>';
+    return null;
   }
+}
+
+// Recovery card: same fields as the metadata JSON, without ciphertext.
+async function importCard() {
+  const status = document.getElementById('card-status');
+  const meta = importMeta('card-import', 'card-status');
+  if (!meta || !meta.salt || !meta.iv || !meta.txId) {
+    status.innerHTML = '<div class="error-box">恢复卡文字格式不对，请检查是否完整粘贴</div>';
+    return;
+  }
+  if (meta.ciphertext) return;
+  await fetchCiphertext();
+  const ok = /^[A-Za-z0-9+/]+={0,2}$/.test(document.getElementById('ciphertext-raw').value || '');
+  status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">' + (ok ? '✓ 已导入恢复卡并下载加密金库。请在第三步按顺序填写答案，然后点「本地解密」' : '✓ 已导入恢复卡。自动下载失败，请检查网络后点第一步的「从存储网关下载密文」') + '</p>';
 }
 
 function renderSchemaHint(schema, lang) {

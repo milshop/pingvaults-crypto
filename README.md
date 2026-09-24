@@ -53,6 +53,11 @@ use Irys L1. The status check reports which network the evidence points to
 (`arweave`, `irys` or `unknown`): a 44-character ID can only be an Irys L1 ID, so
 Arweave is not queried for it, and an Irys record with no Arweave record is shown as
 Irys L1 storage rather than as missing Arweave inclusion. `unknown` never means lost.
+`components/RecoveryCard.tsx` builds the printable recovery card: a QR code and
+text holding `{v, txId, salt, iv, keySchema, keyLanguage}`. It never includes
+answers, keys, plaintext or ciphertext. The offline decryptors accept this text in
+"Have a recovery card?" and download the ciphertext from the storage gateways.
+
 `lib/turbo.ts` signs an ANS-104 data item on the server and posts it to the
 ArDrive Turbo upload service, which writes it to Arweave. It is used when the
 deployment sets `STORAGE_BACKEND=turbo`; the returned ID is only accepted if it

@@ -154,6 +154,19 @@
     <span class="badge">Client-side · AES-256-GCM · PBKDF2</span>
   </header>
 
+  <!-- Recovery card -->
+  <div class="card" style="border-color:#22c55e55;">
+    <div class="card-title">Have a recovery card? Start here</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:10px;">
+      Scan the QR code on the recovery card with a phone and paste the text below, or type it in from the card. The encrypted vault is then downloaded from Arweave automatically.
+    </p>
+    <div class="field">
+      <textarea id="card-import" rows="3" placeholder='{"v":1,"txId":"...","salt":"...","iv":"...","keySchema":[...],"keyLanguage":"en"}'></textarea>
+    </div>
+    <button class="btn btn-secondary" onclick="importCard()">Import recovery card</button>
+    <div id="card-status"></div>
+  </div>
+
   <!-- Step 1 -->
   <div class="card">
     <div class="card-title">Step 1 — Ciphertext Source</div>
@@ -354,10 +367,10 @@ async function fetchCiphertext() {
   btn.disabled = false; btn.textContent = 'Download ciphertext from storage';
 }
 
-function importMeta() {
-  const status = document.getElementById('import-status');
+function importMeta(sourceId = 'meta-import', statusId = 'import-status') {
+  const status = document.getElementById(statusId);
   try {
-    const meta = JSON.parse(document.getElementById('meta-import').value.trim());
+    const meta = JSON.parse(document.getElementById(sourceId).value.trim());
     if (meta.salt) document.getElementById('salt').value = meta.salt;
     if (meta.iv) document.getElementById('iv').value = meta.iv;
     if (meta.keyLanguage) document.getElementById('language').value = meta.keyLanguage;
@@ -379,9 +392,25 @@ function importMeta() {
     } else {
       status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">✓ Imported — fill in answers to decrypt</p>';
     }
+    return meta;
   } catch {
     status.innerHTML = '<div class="error-box">Invalid JSON format</div>';
+    return null;
   }
+}
+
+// Recovery card: same fields as the metadata JSON, without ciphertext.
+async function importCard() {
+  const status = document.getElementById('card-status');
+  const meta = importMeta('card-import', 'card-status');
+  if (!meta || !meta.salt || !meta.iv || !meta.txId) {
+    status.innerHTML = '<div class="error-box">The card text is not valid. Check that all of it was pasted.</div>';
+    return;
+  }
+  if (meta.ciphertext) return;
+  await fetchCiphertext();
+  const ok = /^[A-Za-z0-9+/]+={0,2}$/.test(document.getElementById('ciphertext-raw').value || '');
+  status.innerHTML = '<p style="font-size:0.8rem;color:#22c55e;margin-top:8px;">' + (ok ? '✓ Card imported and encrypted vault downloaded. Enter the answers in Step 3, in order, then click Decrypt.' : '✓ Card imported. The automatic download failed; check your connection and use “Fetch ciphertext” in Step 1.') + '</p>';
 }
 
 function renderSchemaHint(schema, lang) {
