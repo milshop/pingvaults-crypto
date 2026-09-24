@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       tx_id: txId,
-      arweave_url: process.env.STORAGE_BACKEND === "turbo" ? `https://ar-io.dev/${txId}` : `${ARWEAVE_GATEWAY}/${txId}`,
+      arweave_url: process.env.STORAGE_BACKEND === "turbo" ? `https://turbo-gateway.com/${txId}` : `${ARWEAVE_GATEWAY}/${txId}`,
       db_saved: true,
       next_ping_at: nextPingAt ?? null,
     });

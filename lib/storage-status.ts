@@ -1,5 +1,6 @@
 /** A receipt, a gateway response and chain inclusion are different evidence. */
-export const STORAGE_GATEWAYS = ["https://gateway.irys.xyz", "https://arweave.net", "https://ar-io.dev"] as const;
+// turbo-gateway.com serves Turbo uploads within seconds, before arweave.net has the block.
+export const STORAGE_GATEWAYS = ["https://gateway.irys.xyz", "https://arweave.net", "https://turbo-gateway.com", "https://ar-io.dev"] as const;
 export const STORAGE_PROBE_TIMEOUT_MS = 6000;
 export function isStorageTxId(value: unknown): value is string {
   // Legacy Arweave and Irys IDs; shape alone does not identify a network.

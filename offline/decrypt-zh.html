@@ -337,7 +337,7 @@ async function fetchCiphertext() {
   btn.disabled = true;
   btn.innerHTML = '<span class="loading-spinner"></span> 下载中...';
   status.innerHTML = '';
-  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`,`https://ar-io.dev/${txid}`]) {
+  for (const url of [`https://gateway.irys.xyz/${txid}`,`https://arweave.net/${txid}`,`https://turbo-gateway.com/${txid}`,`https://ar-io.dev/${txid}`]) {
     try {
       const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
       if (!res.ok) { await res.body?.cancel(); continue; }
