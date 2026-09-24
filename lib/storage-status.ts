@@ -5,12 +5,19 @@ export function isStorageTxId(value: unknown): value is string {
   // Legacy Arweave and Irys IDs; shape alone does not identify a network.
   return typeof value === "string" && /^[a-zA-Z0-9_-]{43,44}$/.test(value);
 }
+/** Arweave IDs are 32 bytes in base64url (43 chars). A 44-char ID can only be an Irys L1 ID. */
+export function couldBeArweaveTxId(txId: string): boolean {
+  return txId.length === 43;
+}
 export type ObservationState = "found" | "not_found" | "error";
+/** Where the evidence says the ciphertext lives. "unknown" is not "lost". */
+export type StorageNetwork = "arweave" | "irys" | "unknown";
 export interface StorageStatus {
-  version: 2;
+  version: 3;
   txId: string;
   checkedAt: string;
-  arweave: { state: ObservationState; blockHeight: number | null; blockTimestamp: number | null };
+  network: StorageNetwork;
+  arweave: { state: ObservationState | "not_applicable"; blockHeight: number | null; blockTimestamp: number | null };
   irys: { state: ObservationState; uploadedAt: number | null };
   gateways: { url: string; state: ObservationState }[];
 }
@@ -47,10 +54,15 @@ async function indexLookup(url: string, txId: string, fields: string, fetcher: t
 export async function getStorageStatus(txId: string, options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; now?: () => number } = {}): Promise<StorageStatus> {
   if (!isStorageTxId(txId)) throw new Error("Invalid txId");
   const { fetcher = fetch, signal, timeoutMs, now = Date.now } = options;
+  const arweaveShape = couldBeArweaveTxId(txId);
+  // Only probe Arweave for IDs Arweave could have issued; a 44-char Irys L1 ID is rejected there.
+  const gatewaysToProbe = arweaveShape ? STORAGE_GATEWAYS : STORAGE_GATEWAYS.filter((gateway) => gateway === "https://gateway.irys.xyz");
   const [arweave, irys, gateways] = await Promise.all([
-    indexLookup("https://arweave.net/graphql", txId, "block { height timestamp }", fetcher, signal, timeoutMs),
+    arweaveShape
+      ? indexLookup("https://arweave.net/graphql", txId, "block { height timestamp }", fetcher, signal, timeoutMs)
+      : Promise.resolve({ state: "not_applicable" as const, node: null }),
     indexLookup("https://uploader.irys.xyz/graphql", txId, "timestamp receipt { timestamp }", fetcher, signal, timeoutMs),
-    Promise.all(STORAGE_GATEWAYS.map(async (gateway) => {
+    Promise.all(gatewaysToProbe.map(async (gateway) => {
       const url = `${gateway}/${txId}`;
       try {
         const res = await fetcher(url, { method: "HEAD", cache: "no-store", signal: probeSignal(signal, timeoutMs) });
@@ -60,8 +72,12 @@ export async function getStorageStatus(txId: string, options: { fetcher?: typeof
     })),
   ]);
   const timestamp = positiveNumber(irys.node?.receipt?.timestamp) ?? positiveNumber(irys.node?.timestamp);
+  // An Arweave index record wins; an Irys record with no Arweave record means Irys L1 storage.
+  const network: StorageNetwork = arweave.state === "found" ? "arweave"
+    : irys.state === "found" && (arweave.state === "not_found" || arweave.state === "not_applicable") ? "irys"
+    : "unknown";
   return {
-    version: 2, txId, checkedAt: new Date(now()).toISOString(),
+    version: 3, txId, checkedAt: new Date(now()).toISOString(), network,
     arweave: { state: arweave.state, blockHeight: positiveNumber(arweave.node?.block?.height), blockTimestamp: positiveNumber(arweave.node?.block?.timestamp) },
     irys: { state: irys.state, uploadedAt: timestamp !== null && timestamp <= now() ? timestamp : null }, gateways,
   };

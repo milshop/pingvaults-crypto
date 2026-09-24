@@ -49,8 +49,10 @@ The server-side API routes (`save`, `fetch`) are particularly important for audi
 Storage evidence is also published in `components/ArweaveSyncStatus.tsx`,
 `app/api/arweave/status/route.ts`, and `lib/storage-{status,fetch}.ts`.
 The legacy Arweave-named fields and endpoint remain for compatibility. New uploads
-use Irys; upload records, gateway availability and Arweave block inclusion are
-different observations. There is no automatic Arweave migration or settlement ETA.
+use Irys L1. The status check reports which network the evidence points to
+(`arweave`, `irys` or `unknown`): a 44-character ID can only be an Irys L1 ID, so
+Arweave is not queried for it, and an Irys record with no Arweave record is shown as
+Irys L1 storage rather than as missing Arweave inclusion. `unknown` never means lost.
 Offline exports remain essential; a gateway response does not verify decryption.
 
 ---
