@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import qrcode from "qrcode-generator";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,8 @@ const copy = {
     arweave: "The encrypted vault is stored permanently on Arweave. The decryptor downloads it by itself.",
     questions: "Questions to answer, in order",
     noAnswers: "The card has no answers on it. The card alone cannot open the vault.",
-    print: "Print card", copyText: "Copy card text", copied: "Copied",
+    view: "View recovery card", print: "Print or save as PDF", close: "Close", copyText: "Copy card text", copied: "Copied",
+    previewHint: "Check the card below. Printing opens your browser's print dialog, where you can also save it as a PDF.",
     printTitle: "PingVaults recovery card",
     howTitle: "How to recover",
     how: [
@@ -72,7 +74,8 @@ const copy = {
     arweave: "加密的金库永久保存在 Arweave 上，解密器会自动下载。",
     questions: "需要回答的问题（按顺序）",
     noAnswers: "卡上没有答案，只凭这张卡无法打开金库。",
-    print: "打印恢复卡", copyText: "复制卡片文字", copied: "已复制",
+    view: "查看恢复卡", print: "打印或存为 PDF", close: "关闭", copyText: "复制卡片文字", copied: "已复制",
+    previewHint: "先确认下面的卡片内容。点击打印会打开浏览器的打印窗口，也可以在里面存为 PDF。",
     printTitle: "PingVaults 恢复卡",
     howTitle: "如何恢复",
     how: [
@@ -93,20 +96,26 @@ export function RecoveryCard({ data, compact = false }: { data: RecoveryCardData
   const [copied, setCopied] = useState(false);
   const text = useMemo(() => recoveryCardText(data), [data]);
   const svg = useMemo(() => qrSvg(text), [text]);
-  const questions = data.keySchema.map((item) => (item.question ? `${kt(item.type)}${locale === "zh" ? "：" : ": "}${item.question}` : kt(item.type)));
+  const questions = useMemo(
+    () => data.keySchema.map((item) => (item.question ? `${kt(item.type)}${locale === "zh" ? "：" : ": "}${item.question}` : kt(item.type))),
+    [data.keySchema, kt, locale],
+  );
 
-  function printCard() {
-    const w = window.open("", "_blank", "width=760,height=960");
-    if (!w) return;
-    const date = new Date().toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US");
-    w.document.write(`<!doctype html><html lang="${locale === "zh" ? "zh-CN" : "en"}"><head><meta charset="utf-8"><title>${esc(t.printTitle)}</title>
+  const [open, setOpen] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const date = new Date().toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US");
+
+  // The preview and the printout are the same document, so what the user checks is what prints.
+  const cardHtml = useMemo(() => `<!doctype html><html lang="${locale === "zh" ? "zh-CN" : "en"}"><head><meta charset="utf-8"><title>${esc(t.printTitle)}</title>
 <style>
-@page{size:A4;margin:14mm}body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#111;margin:0}
-.card{border:2px solid #111;border-radius:10px;padding:18px 20px;max-width:170mm}
+@page{size:A4;margin:14mm}html,body{margin:0;background:#fff}body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#111;padding:12px}
+.card{border:2px solid #111;border-radius:10px;padding:18px 20px;max-width:170mm;box-sizing:border-box}
 h1{font-size:18px;margin:0 0 12px}.top{display:flex;gap:18px;align-items:flex-start}.qr{width:52mm;flex:none}.qr svg{width:100%;height:auto;display:block}
 h2{font-size:13px;margin:0 0 6px}ol{margin:0 0 10px 18px;padding:0;font-size:12px;line-height:1.5}
 .code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;word-break:break-all;border:1px dashed #999;padding:8px;border-radius:6px;margin-top:6px}
-.foot{font-size:11px;color:#444;margin-top:12px;display:flex;justify-content:space-between;gap:12px}
+.foot{font-size:11px;color:#444;margin-top:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media screen and (max-width:560px){.top{flex-direction:column}.qr{width:60%;margin:0 auto}}
+@media screen{.card{margin:0 auto}}@media print{body{padding:0}}
 </style></head><body><div class="card">
 <h1>${esc(t.printTitle)}</h1>
 <div class="top"><div class="qr">${svg}</div><div>
@@ -115,8 +124,27 @@ h2{font-size:13px;margin:0 0 6px}ol{margin:0 0 10px 18px;padding:0;font-size:12p
 </div></div>
 <h2 style="margin-top:12px">${esc(t.textLabel)}</h2><div class="code">${esc(text)}</div>
 <div class="foot"><span>${esc(t.keep)}</span><span>${esc(t.created)}: ${esc(date)}</span></div>
-</div><script>window.onload=function(){window.focus();window.print();}</script></body></html>`);
-    w.document.close();
+</div></body></html>`, [locale, t, svg, questions, text, date]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = overflow; };
+  }, [open]);
+
+  function viewCard() {
+    setOpen(true);
+    trackEvent("Recovery Card Viewed", { locale, compact });
+  }
+
+  function printCard() {
+    const frame = frameRef.current?.contentWindow;
+    if (!frame) return;
+    frame.focus();
+    frame.print();
     trackEvent("Recovery Card Printed", { locale, compact });
   }
 
@@ -126,9 +154,32 @@ h2{font-size:13px;margin:0 0 6px}ol{margin:0 0 10px 18px;padding:0;font-size:12p
 
   const actions = (
     <div className="flex flex-wrap gap-2">
-      <Button type="button" onClick={printCard}>{t.print}</Button>
+      <Button type="button" onClick={viewCard}>{t.view}</Button>
       <Button type="button" variant="outline" onClick={copyText}>{copied ? t.copied : t.copyText}</Button>
     </div>
+  );
+
+  // Portal to <body> so no transformed or clipped ancestor can trap the overlay.
+  const modal = open && createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6" onClick={() => setOpen(false)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="recovery-card-dialog-title"
+        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-4 py-3">
+          <div>
+            <p id="recovery-card-dialog-title" className="text-sm font-semibold text-gray-900">{t.title}</p>
+            <p className="mt-0.5 text-xs text-gray-500">{t.previewHint}</p>
+          </div>
+          <button type="button" aria-label={t.close} onClick={() => setOpen(false)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-900">✕</button>
+        </div>
+        <iframe ref={frameRef} title={t.printTitle} srcDoc={cardHtml} className="w-full flex-none border-0 bg-white" style={{ height: "min(68vh, 720px)" }}
+          onLoad={(e) => e.currentTarget.contentDocument?.addEventListener("keydown", (ev) => { if (ev.key === "Escape") setOpen(false); })} />
+        <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 px-4 py-3">
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t.close}</Button>
+          <Button type="button" onClick={printCard}>{t.print}</Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 
   if (compact) {
@@ -139,6 +190,7 @@ h2{font-size:13px;margin:0 0 6px}ol{margin:0 0 10px 18px;padding:0;font-size:12p
           <p className="text-xs text-gray-600 mt-1 leading-relaxed">{t.lead}</p>
         </div>
         {actions}
+        {modal}
       </div>
     );
   }
@@ -180,6 +232,7 @@ h2{font-size:13px;margin:0 0 6px}ol{margin:0 0 10px 18px;padding:0;font-size:12p
       </div>
 
       {actions}
+      {modal}
     </section>
   );
 }
