@@ -4,7 +4,7 @@ import { getPlanLimits, type UserPlan } from "./plans";
 
 export const MAX_VAULT_REQUEST_BYTES = 6 * 1024 * 1024;
 const TYPES = ["name", "custom_question", "id_last_4", "phone_last_4"];
-const FIELDS = new Set(["ciphertext", "salt", "iv", "key_schema", "key_language", "emergency_email", "backup_email", "ping_initial_days", "ping_interval_days", "ping_max_count"]);
+const FIELDS = new Set(["ciphertext", "salt", "iv", "key_schema", "key_language", "emergency_email", "backup_email", "ping_initial_days", "ping_interval_days", "ping_max_count", "notify_contact"]);
 function invalid(): never { throw new RequestPolicyError("Invalid encrypted vault or recovery metadata"); }
 function base64(value: unknown, minBytes: number, maxBytes: number): value is string {
   if (typeof value !== "string" || value.length > 4 * Math.ceil(maxBytes / 3) || value.length % 4 !== 0 ||
@@ -53,5 +53,6 @@ export function validateVaultInput(input: unknown, plan: UserPlan) {
     emergency_email: email("emergency_email"), backup_email: email("backup_email"),
     ping_initial_days: days("ping_initial_days", 365),
     ping_interval_days: days("ping_interval_days", 30), ping_max_count: days("ping_max_count", 10),
+    notify_contact: body.notify_contact === undefined ? false : typeof body.notify_contact === "boolean" ? body.notify_contact : invalid(),
   };
 }

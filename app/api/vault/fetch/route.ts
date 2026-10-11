@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       iv: vault.crypto_iv,
       key_schema: vault.key_schema ?? [],
       key_language: vault.key_language ?? "zh",
+      ...(vault.kdf ? { kdf: vault.kdf, rc: vault.rc === true } : {}),
       tx_id: vault.arweave_txid,
       storage_url: result.url,
       arweave_url: result.url,

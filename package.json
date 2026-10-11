@@ -1,7 +1,7 @@
 {
   "name": "pingvaults-crypto",
   "version": "1.0.0",
-  "description": "PingVaults encryption core — open source for independent security auditing",
+  "description": "PingVaults encryption core \u2014 open source for independent security auditing",
   "type": "module",
   "main": "./src/crypto.ts",
   "scripts": {
@@ -18,11 +18,15 @@
     "PBKDF2",
     "WebCrypto",
     "zero-knowledge",
-    "digital-estate"
+    "digital-estate",
+    "Argon2id"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/milshop/pingvaults-crypto"
+  },
+  "dependencies": {
+    "hash-wasm": "4.12.0"
   }
 }

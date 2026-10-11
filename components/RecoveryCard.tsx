@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import qrcode from "qrcode-generator";
 import { Button } from "@/components/ui/button";
 import type { KeySchemaItemSafe } from "@/components/VaultForm";
-import type { Language } from "@/lib/crypto";
+import type { Language, VaultHeader } from "@/lib/crypto";
 import { trackEvent } from "@/lib/analytics";
 
 export interface RecoveryCardData {
@@ -15,6 +15,7 @@ export interface RecoveryCardData {
   iv: string;
   keySchema: KeySchemaItemSafe[];
   keyLanguage: Language;
+  header?: VaultHeader | null; // v2 vaults: KDF parameters and whether a recovery code is required
 }
 
 /**
@@ -23,14 +24,15 @@ export interface RecoveryCardData {
  * It never contains answers, keys or plaintext.
  */
 export function recoveryCardText(data: RecoveryCardData): string {
-  return JSON.stringify({
-    v: 1,
+  const base = {
     txId: data.txId,
     salt: data.salt,
     iv: data.iv,
     keySchema: data.keySchema.map(({ type, question }) => (question ? { type, question } : { type })),
     keyLanguage: data.keyLanguage,
-  });
+  };
+  // v1 cards stay byte-for-byte the same; v2 adds the KDF parameters and the recovery-code flag (never the code itself).
+  return JSON.stringify(data.header ? { v: 2, ...base, kdf: data.header.kdf, rc: data.header.rc } : { v: 1, ...base });
 }
 
 function qrSvg(text: string): string {

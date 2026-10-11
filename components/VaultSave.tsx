@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { KEY_TYPE_LABELS, decrypt } from "@/lib/crypto";
 import type { KeySelection } from "@/lib/crypto";
 import type { VaultPayload, KeySchemaItemSafe } from "@/components/VaultForm";
-import type { Language } from "@/lib/crypto";
+import type { Language, VaultHeader } from "@/lib/crypto";
 import {
   PingConfig,
   PING_CONFIG_DEFAULTS,
@@ -30,6 +30,7 @@ export interface LocalVaultMeta {
   keyLanguage: Language;
   savedAt: string;
   ciphertext: string; // included so decryption works even if all gateways are down
+  header?: VaultHeader | null; // v2 only; absent means v1
 }
 
 interface VaultSaveProps {
@@ -64,6 +65,7 @@ export function VaultSave({
   const [pingEnabled, setPingEnabled] = useState(Boolean(initialPingConfig?.emergencyEmail));
   const [pingConfig, setPingConfig] = useState<PingConfigData>(initialPingConfig ?? PING_CONFIG_DEFAULTS);
   const [drillPassedAt, setDrillPassedAt] = useState<string | null>(null);
+  const [notifyContact, setNotifyContact] = useState(true);
 
   const canSave = !pingEnabled || pingConfig.emergencyEmail.trim().includes("@");
   const summaryCategories = payload.summary?.categories ?? [];
@@ -102,6 +104,7 @@ export function VaultSave({
             ping_initial_days:  pingConfig.initialDays,
             ping_interval_days: pingConfig.intervalDays,
             ping_max_count:     pingConfig.maxPings,
+            notify_contact:     notifyContact,
           } : {}),
         }),
       });
@@ -396,6 +399,13 @@ export function VaultSave({
         {pingEnabled && (
           <div className="border-t border-gray-200 p-5">
             <PingConfig value={pingConfig} onChange={setPingConfig} userPlan={userPlan} />
+            <label className="mt-4 flex items-start gap-2.5 text-sm text-gray-700">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-emerald-600" checked={notifyContact} onChange={(e) => setNotifyContact(e.target.checked)} />
+              <span>
+                {t("notifyContactLabel")}
+                <span className="block text-xs text-gray-500 mt-0.5">{t("notifyContactHint")}</span>
+              </span>
+            </label>
           </div>
         )}
       </div>

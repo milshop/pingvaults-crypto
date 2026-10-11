@@ -258,3 +258,39 @@ describe("KDF separator", () => {
     expect(KDF_SEPARATOR).toBe("|");
   });
 });
+
+// ─── v2: Argon2id + HKDF, optional recovery code ──────────
+// Also decrypted independently with argon2-cffi + Python cryptography.
+import { decryptAny, parseRecoveryCode, isVaultHeader, encryptV2, generateRecoveryCode } from "../src/crypto";
+
+describe("v2 fixed vectors", () => {
+  const SEL_ZH_V2: KeySelection[] = [
+    { type: "name", value: "张伟" },
+    { type: "custom_question", value: "北京", question: "你出生的城市？" },
+  ];
+  const HEADER = (rc: boolean) => ({ v: 2 as const, kdf: { alg: "argon2id" as const, m: 65536, t: 3, p: 1 }, rc });
+  const CODE = "7K2Q-FM9X-4D0T-ZPAH-3WN8-YB6C-E8MS";
+  const STD = { ciphertext: "jh/40m8BX8FfodKDTexoIKnnWYF7noV3y5OQ+d1AbhP7QZGPVMDxT78BVh1g", salt: "ioE3xsIbR4pL7w6J9aWLl0X9/5qqVh/tHUmjt/dC3Bc=", iv: "g/zb1yl8DPQFJimO", header: HEADER(false) };
+  const RC = { ciphertext: "bB7VZ5rXfHb5mRr3eMs3yF/QzcpHxYApVDaPtxzC1K9+JN9AgARaUTnfcq6ahw==", salt: "X21PPMWkFrnOo142cw+DfflH8iBHEs6028o8A6NukQg=", iv: "6ygghR9kOIoFSW/H", header: HEADER(true) };
+
+  it("standard vector decrypts with the answers", async () => {
+    expect(await decryptAny(STD, SELECTIONS_EN, "en")).toBe("PingVaults v2 standard vector");
+  });
+  it("recovery-code vector needs the code", async () => {
+    expect(await decryptAny(RC, SEL_ZH_V2, "zh", CODE)).toBe("PingVaults v2 恢复码 vector");
+    await expect(decryptAny(RC, SEL_ZH_V2, "zh")).rejects.toThrow();
+  });
+  it("header tampering fails", async () => {
+    await expect(decryptAny({ ...RC, header: HEADER(false) }, SEL_ZH_V2, "zh")).rejects.toThrow();
+  });
+  it("recovery code checksum", async () => {
+    expect((await parseRecoveryCode(CODE)).ok).toBe(true);
+    expect((await parseRecoveryCode(CODE.replace("E8MS", "E8MT"))).ok).toBe(false);
+  });
+  it("round-trip and header validation", async () => {
+    const code = await generateRecoveryCode();
+    const p = await encryptV2("x", SELECTIONS_EN, "en", { recoveryCode: code });
+    expect(isVaultHeader(p.header)).toBe(true);
+    expect(await decryptAny(p, SELECTIONS_EN, "en", code)).toBe("x");
+  });
+});

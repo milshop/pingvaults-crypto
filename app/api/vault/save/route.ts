@@ -12,6 +12,7 @@ import { getPlanLimits } from "@/lib/plans";
 import { randomUUID } from "crypto";
 import { readBoundedJson, RequestPolicyError } from "@/lib/request-policy";
 import { MAX_VAULT_REQUEST_BYTES, validateVaultInput } from "@/lib/vault-input";
+import { sendContactNoticeEmail } from "@/lib/ses";
 
 const DEFAULT_INITIAL_DAYS  = 30;   // days before first ping
 const DEFAULT_INTERVAL_DAYS = 7;    // days between subsequent pings
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
       ping_initial_days,
       ping_interval_days,
       ping_max_count,
+      notify_contact,
     } = validateVaultInput(body, userPlan);
 
     // Free tier: reject backup email
@@ -145,6 +147,16 @@ export async function POST(request: NextRequest) {
         pings_sent:         0,
         next_ping_at:       nextPingAt   ?? (0 as unknown as number),
       });
+    }
+
+    // One-time notice to a newly chosen emergency contact (opt-in, never blocks the save).
+    if (hasPing && emergency_email && notify_contact && existing?.contact_notified_email !== emergency_email) {
+      try {
+        await sendContactNoticeEmail(emergency_email, session.email, key_language === "zh");
+        await updateVault(session.email, { contact_notified_email: emergency_email });
+      } catch (err) {
+        console.error("[/api/vault/save] contact notice failed", err instanceof Error ? err.name : "UnknownError");
+      }
     }
 
     return NextResponse.json({

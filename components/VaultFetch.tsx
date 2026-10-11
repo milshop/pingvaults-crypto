@@ -7,8 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  decrypt,
+  decryptAny,
+  headerFromRecord,
+  isVaultHeader,
   LANGUAGE_LABELS,
+  type VaultHeader,
   type KeySelection,
   type Language,
   type KeyType,
@@ -165,6 +168,7 @@ interface FetchedVault {
   arweave_url: string;
   updated_at?: string;
   source: "dynamodb" | "arweave_direct" | "local_backup";
+  header: VaultHeader | null;
 }
 
 // ─── VaultFetch main component ────────────────────────────
@@ -185,6 +189,7 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
   const [decryptResult, setDecryptResult] = useState<string | null>(null);
   const [decryptError, setDecryptError] = useState<string | null>(null);
   const [decryptLoading, setDecryptLoading] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
 
   async function handleFetch() {
     setLoading(true);
@@ -222,6 +227,7 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
           tx_id: local.txId,
           arweave_url: url,
           source,
+          header: isVaultHeader(local.header) ? local.header : null,
         });
         setAnswers(local.keySchema.map(() => ""));
         return;
@@ -241,6 +247,7 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
         arweave_url: data.arweave_url,
         updated_at: data.updated_at,
         source: "dynamodb",
+        header: headerFromRecord(data.kdf, data.rc),
       });
       setAnswers((data.key_schema ?? []).map(() => ""));
     } catch (err) {
@@ -264,14 +271,15 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
         value: answers[i] ?? "",
       }));
 
-      const plaintext = await decrypt(
-        { ciphertext: vault.ciphertext, salt: vault.salt, iv: vault.iv },
+      const plaintext = await decryptAny(
+        { ciphertext: vault.ciphertext, salt: vault.salt, iv: vault.iv, header: vault.header },
         selections,
-        vault.keyLanguage
+        vault.keyLanguage,
+        recoveryCode
       );
       setDecryptResult(plaintext);
     } catch {
-      setDecryptError(t("decryptError"));
+      setDecryptError(vault.header?.rc ? t("decryptErrorWithCode") : t("decryptError"));
     } finally {
       setDecryptLoading(false);
     }
@@ -335,7 +343,7 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
           </div>
 
           {vault.salt && vault.iv && vault.keySchema.length > 0 && (
-            <RecoveryCard compact data={{ txId: vault.tx_id, salt: vault.salt, iv: vault.iv, keySchema: vault.keySchema, keyLanguage: vault.keyLanguage }} />
+            <RecoveryCard compact data={{ txId: vault.tx_id, salt: vault.salt, iv: vault.iv, keySchema: vault.keySchema, keyLanguage: vault.keyLanguage, header: vault.header }} />
           )}
 
           {/* Passphrase arrangement hint */}
@@ -389,6 +397,21 @@ export function VaultFetch({ vaultKey = DEFAULT_VAULT_KEY }: VaultFetchProps) {
                   />
                 </div>
               ))}
+
+              {vault.header?.rc && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-emerald-700">{t("recoveryCodeLabel")}</Label>
+                  <Input
+                    value={recoveryCode}
+                    onChange={(e) => setRecoveryCode(e.target.value)}
+                    placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                    className="font-mono uppercase tracking-wider"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">{t("recoveryCodeHint")}</p>
+                </div>
+              )}
 
               <Button type="submit" className="w-full" disabled={decryptLoading}>
                 {decryptLoading ? t("decrypting") : t("decryptButton")}

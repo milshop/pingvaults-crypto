@@ -54,7 +54,7 @@ use Irys L1. The status check reports which network the evidence points to
 Arweave is not queried for it, and an Irys record with no Arweave record is shown as
 Irys L1 storage rather than as missing Arweave inclusion. `unknown` never means lost.
 `components/RecoveryCard.tsx` builds the printable recovery card: a QR code and
-text holding `{v, txId, salt, iv, keySchema, keyLanguage}`. It never includes
+text holding `{v, txId, salt, iv, keySchema, keyLanguage}` (v2 cards add `kdf` and `rc`). It never includes
 answers, keys, plaintext or ciphertext. The offline decryptors accept this text in
 "Have a recovery card?" and download the ciphertext from the storage gateways.
 
@@ -79,6 +79,20 @@ Offline exports remain essential; a gateway response does not verify decryption.
 | Order sensitivity | `[name, question]` ≠ `[question, name]` — order is part of the key |
 
 The implementation uses standard WebCrypto primitives rather than a custom cipher. Security still depends on phrase quality, endpoint integrity, browser code, and correct use.
+
+### v2 (October 2026): Argon2id, optional recovery code
+
+v1 vaults stay readable forever through the same code path. v2 is selected by a header stored with the vault and on the recovery card:
+
+| Component | v2 |
+|-----------|----|
+| Answer stretching | `Ka = Argon2id(P, salt, m = 64 MiB, t = 3, p = 1, 32 bytes)` — RFC 9106 second recommended option with one lane, because browser WASM is single-threaded |
+| Key | `HKDF-SHA256(Ka, salt, "PingVaults v2 std")`, or with a recovery code `HKDF-SHA256(Ka ‖ UTF8(R), salt, "PingVaults v2 rc")` |
+| Recovery code `R` | 125 random bits as 25 Crockford Base32 characters + 3 check characters (first 15 bits of `SHA-256("PVRC1" ‖ data)`), shown as 7 groups of 4. Generated in the browser, printed on the recovery card, never sent to the server |
+| Header binding | AES-GCM additional data = `{"v":2,"kdf":{"alg":"argon2id","m":65536,"t":3,"p":1},"rc":…}`, so editing the parameters makes decryption fail |
+| Argon2id code | [hash-wasm](https://github.com/Daninet/hash-wasm) 4.12.0 (MIT). The offline decryptors inline `dist/argon2.umd.min.js` byte-for-byte, SHA-256 `dcec617a2e1b700fa132d1583a186cb70611113395e869f2dd6cc82b415d3094` |
+
+The recovery code protects against offline guessing by anyone who obtains the salt (a database leak, a forwarded contact email) but not by someone who also holds the recovery card. The fixed v2 vectors in `test/vectors.test.ts` were also decrypted independently with argon2-cffi and Python `cryptography`.
 
 ---
 
@@ -148,7 +162,7 @@ The test suite includes:
 
 The `offline/` directory contains standalone HTML files that:
 - Implement the same algorithm as `src/crypto.ts`
-- Have zero CDN or library dependencies
+- Load nothing from a CDN; v2 support inlines the hash-wasm Argon2 build shown above
 - Can work offline from exported ciphertext; the optional TxID retrieval button makes requests to Irys or Arweave gateways
 - Can be saved and used even if pingvaults.com is unreachable
 
