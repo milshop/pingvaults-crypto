@@ -1,6 +1,8 @@
 # pingvaults-crypto
 
-> The open-source encryption core of [PingVaults](https://www.pingvaults.com) — published for independent security auditing.
+> The open-source encryption core of [PingVaults](https://www.pingvaults.com), published so anyone can inspect, test and reuse it.
+
+PingVaults is a client-side encrypted vault for crypto inheritance and digital estate planning. You write recovery instructions for your family (where wallets and accounts are, what to do first), they are encrypted in your browser, and a trusted contact receives them only if you stop answering check-in emails. This repository holds the parts that protect the data: the browser encryption, the offline decryptors and the save/fetch routes.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#running-tests)
@@ -49,7 +51,8 @@ The server-side API routes (`save`, `fetch`) are particularly important for audi
 Storage evidence is also published in `components/ArweaveSyncStatus.tsx`,
 `app/api/arweave/status/route.ts`, and `lib/storage-{status,fetch}.ts`.
 The legacy Arweave-named fields and endpoint remain for compatibility. New uploads
-use Irys L1. The status check reports which network the evidence points to
+are written to Arweave through ArDrive Turbo; vaults saved earlier on Irys L1 remain
+readable from the Irys gateway. The status check reports which network the evidence points to
 (`arweave`, `irys` or `unknown`): a 44-character ID can only be an Irys L1 ID, so
 Arweave is not queried for it, and an Irys record with no Arweave record is shown as
 Irys L1 storage rather than as missing Arweave inclusion. `unknown` never means lost.
@@ -129,13 +132,6 @@ This describes the published code path, not a cryptographic attestation of the c
 
 ## Running tests
 
-### Review status (2026-09-20)
-
-A scoped internal AI-assisted code review was performed with OpenAI Codex for
-PingVaults. It is not an independent audit, penetration test or security
-certification. The dated scope and open limitations are published at
-[Security transparency](https://www.pingvaults.com/en/security#review).
-
 The September snapshot also publishes `lib/auth-policy.ts`,
 `lib/request-policy.ts`, `lib/vault-input.ts` and `lib/plans.ts` so the
 validation used by the save and reset routes can be inspected. These snapshots
@@ -203,4 +199,19 @@ Attribution appreciated but not required.
 
 ## Main product
 
-[PingVaults](https://www.pingvaults.com) — Client-side encrypted recovery instructions with inactivity-based contact delivery.
+[PingVaults](https://www.pingvaults.com): client-side encrypted recovery instructions with inactivity-based contact delivery (a dead man's switch for crypto and digital accounts).
+
+- [How the security model works](https://www.pingvaults.com/en/security) and [verify the live build](https://www.pingvaults.com/verify)
+- [Dead man's switch: what it is and how to set one up by email](https://www.pingvaults.com/en/dead-mans-switch)
+- [Crypto inheritance planning guide](https://www.pingvaults.com/en/crypto-inheritance)
+
+## Guides for families
+
+Free, sourced guides maintained by PingVaults, each checked against the platforms' own help pages:
+
+- [Crypto account after death: claim requirements by platform](https://www.pingvaults.com/en/blog/crypto-death-claims-by-platform) (table and [CSV dataset](https://www.pingvaults.com/downloads/crypto-death-claims-by-platform-en.csv), CC BY 4.0)
+- [What happens to crypto when someone dies](https://www.pingvaults.com/en/blog/what-happens-to-crypto-when-someone-dies)
+- [What is a seed phrase?](https://www.pingvaults.com/en/blog/what-is-a-seed-phrase) and [what to do if the seed phrase is missing](https://www.pingvaults.com/en/blog/seed-phrase-missing-after-death)
+- [Crypto letter of instruction template](https://www.pingvaults.com/en/blog/crypto-letter-of-instruction-template)
+- Self-custody wallets after a death: [MetaMask](https://www.pingvaults.com/en/blog/metamask-wallet-after-death), [Ledger](https://www.pingvaults.com/en/blog/ledger-wallet-after-death), [Trezor](https://www.pingvaults.com/en/blog/trezor-wallet-after-death)
+- All guides in English and Chinese: [pingvaults.com/en/blog](https://www.pingvaults.com/en/blog) · [pingvaults.com/zh/blog](https://www.pingvaults.com/zh/blog)
